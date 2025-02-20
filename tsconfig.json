@@ -1,0 +1,35 @@
+{
+    "compilerOptions": {
+        "target": "ES2023", // Use an up-to-date ECMAScript target.
+        "module": "commonjs", // Use CommonJS for Node.js compatibility.
+        "lib": [
+            "ES2022"
+        ], // Include the latest ECMAScript library.
+        "rootDir": "./src", // Input source directory.
+        "outDir": "./dist", // Output directory for compiled files.
+        "moduleResolution": "node", // Resolve modules using Node conventions.
+        "strict": true, // Enable strict type-checking options.
+        "esModuleInterop": true, // Enable compatibility with CommonJS modules.
+        "forceConsistentCasingInFileNames": true, // Ensure file casing consistency.
+        "skipLibCheck": true, // Speed up compilation by skipping library checks.
+        "sourceMap": true, // Generate corresponding .map files.
+        "resolveJsonModule": true, // Enable importing JSON files.
+        "emitDecoratorMetadata": true,
+        "experimentalDecorators": true,
+        "typeRoots": [
+            "./node_modules/@types"
+        ], // Specify type definition roots.
+        "types": [
+            "node",
+            "jest"
+        ] // Include Node.js globals.
+    },
+    "include": [
+        "src"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist",
+        "tests"
+    ]
+}

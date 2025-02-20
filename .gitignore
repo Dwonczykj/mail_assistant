@@ -1,8 +1,11 @@
 .env
 *token.json
-Google Cloud Credentials.json
-Google Auth Client Secret for *.json
-Google Auth Client Secret for WebApp.json
-Google Auth Client Secret for Desktop.json
-*json.DS_Store
+*Credentials*.json
+*Secret*.json
+Google * Secret *.json
+.DS_Store
 node_modules
+*.DS_Store
+logs/
+*.log
+gitleaks-report.txt
