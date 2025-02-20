@@ -29,9 +29,7 @@ export class AuthService {
     }
 
     async handleGoogleCallback(code: string, sender: string): Promise<void> {
-        // TODO We remove creating a gmail client as there may not be one yet if the daemon has called auth first and as a result this callback has been called in which case the callback needs to include the sender so that i can send the code to the redis channel if it is initiated from the daemon else instantiate the gmail client for the web server if this is instantiated from the webserver.
-        // todo: get requester initial from caller of this function.
-        const gmailClient = await GmailClient.getInstance({ sender: "daemon", code: code });
+        const gmailClient = await GmailClient.getInstance({ sender: "webapi" }); // NOTE: We only use webapi callbacks now from requests to Authenticate Google Auth that initiated from the web server.
         this.logger.debug(`Handling OAuth callback with code: ${code}`);
         // Assume handleOAuthCallback returns an object { access_token, expires_in: number }
         const tokenInfo = await gmailClient.handleOAuthCallback(code);

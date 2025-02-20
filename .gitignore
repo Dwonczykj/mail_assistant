@@ -1,5 +1,5 @@
 .env
-*token.json
+*token*.json
 *Credentials*.json
 *Secret*.json
 Google * Secret *.json

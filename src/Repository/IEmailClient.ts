@@ -9,9 +9,7 @@ export interface IEmailClient {
     /**
      * Starts listening for incoming emails through Gmail push notifications.
      */
-    listenForIncomingEmails(
-        sender: string,
-    ): Promise<void>;
+    listenForIncomingEmails(): Promise<void>;
 
     /**
      * Fetches the last N emails from the Gmail server.
@@ -19,7 +17,6 @@ export interface IEmailClient {
      * @returns Array of Gmail message objects.
      */
     fetchLastEmails(
-        sender: string,
         count: number
     ): Promise<Email[]>;
 
@@ -31,7 +28,6 @@ export interface IEmailClient {
      * @returns The updated Gmail message object with the categorisation label applied.
      */
     categoriseEmail(
-        sender: string,
         { email, label }:
             { email: Email, label: ILabel }): Promise<Email>;
 }

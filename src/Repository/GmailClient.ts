@@ -1,7 +1,7 @@
 import { google } from 'googleapis';
 import type { gmail_v1 } from 'googleapis';
 import { OAuth2Client, Credentials } from 'google-auth-library';
-import { getAuthenticatedClient } from '../lib/utils/gmailAuth';
+import { authorize } from '../lib/utils/gmailAuth';
 import { config } from '../Config/config';
 import { CategoriserFactory } from "../Categoriser/LLMCategoriser";
 import { GmailAdaptor } from '../models/GmailAdaptor';
@@ -36,19 +36,14 @@ export class GmailClient implements IEmailClient {
 
     static async getInstance({
         sender,
-        code = null
     }: {
-        sender: string,
-        code?: string | null
+        sender?: string | undefined,
     }): Promise<GmailClient> {
         if (!GmailClient.instance) {
             GmailClient.instance = new GmailClient();
         }
         if (!GmailClient.instance.authClient) {
-            await GmailClient.instance.initAuth({
-                sender,
-                code
-            });
+            await GmailClient.instance.initAuth();
         }
         return GmailClient.instance;
     }
@@ -58,18 +53,10 @@ export class GmailClient implements IEmailClient {
      * If not already authenticated, it initializes authentication.
      * @returns The authenticated OAuth2Client.
      */
-    private async initAuth({
-        sender,
-        code = null,
-    }: {
-        sender: string,
-        code?: string | null,
-    }): Promise<OAuth2Client> {
+    private async initAuth(): Promise<OAuth2Client> {
+        // NOTE: ONLY TO BE USED FOR DESKTOP AUTH, NOT FOR WEB API AUTH.
         if (!this.authClient) {
-            this.authClient = await getAuthenticatedClient({
-                preExistingCode: code,
-                sender: sender
-            });
+            this.authClient = await authorize();
         }
         return this.authClient;
     }
@@ -79,10 +66,8 @@ export class GmailClient implements IEmailClient {
    * It sets up push notifications on the "INBOX" by using a webhook/topic.
    * TODO: This will require the WebAPI application to also be running exposing our webhook.
    */
-    public async listenForIncomingEmails(
-        sender: string
-    ): Promise<void> {
-        const authClient = await this.initAuth({ sender: sender });
+    public async listenForIncomingEmails(): Promise<void> {
+        const authClient = await this.initAuth();
         const gmail = google.gmail({ version: 'v1', auth: authClient });
 
         try {
@@ -103,10 +88,9 @@ export class GmailClient implements IEmailClient {
     }
 
     public async fetchLastEmails(
-        sender: string,
         count: number
     ): Promise<Email[]> {
-        const authClient = await this.initAuth({ sender: sender });
+        const authClient = await this.initAuth();
         const gmail = google.gmail({ version: 'v1', auth: authClient });
 
         try {
@@ -144,11 +128,10 @@ export class GmailClient implements IEmailClient {
      * @returns The updated Gmail message object with the applied categorisation label.
      */
     public async categoriseEmail(
-        sender: string,
         { email, label }:
             { email: Email, label: ILabel }
     ): Promise<Email> {
-        const authClient = await this.initAuth({ sender: sender });
+        const authClient = await this.initAuth();
         const gmail = google.gmail({ version: 'v1', auth: authClient });
         if (!email.messageId) {
             throw new Error("Email does not have an id.");

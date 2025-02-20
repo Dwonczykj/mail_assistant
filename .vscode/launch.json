@@ -19,6 +19,20 @@
       "type": "node"
     },
     {
+      "name": "Launch Index.ts `npm desktop`",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "runtimeArgs": [
+        "run-script",
+        "desktop"
+      ],
+      "runtimeExecutable": "npm",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "type": "node"
+    },
+    {
       "name": "Launch WebAPI `npm start:web:dev`",
       "request": "launch",
       "cwd": "${workspaceFolder}",
