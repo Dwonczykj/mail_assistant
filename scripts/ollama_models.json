@@ -1,0 +1,8 @@
+{
+    "models": [
+        {
+            "name": "mistral:latest",
+            "url": "http://localhost:11434/api/generate"
+        }
+    ]
+}
