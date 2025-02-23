@@ -13,7 +13,7 @@ import { openUrl } from './openUrl'; // Added cross-platform URL opener using ch
 
 
 
-const DAEMON_SCOPES = config.gmailScopes;
+const DAEMON_SCOPES = config.google.scopes;
 const DAEMON_TOKEN_PATH = config.daemonTokenPath;
 const DAEMON_CREDENTIALS_PATH = config.daemonCredentialsPath;
 

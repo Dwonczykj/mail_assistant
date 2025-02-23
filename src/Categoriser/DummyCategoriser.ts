@@ -1,4 +1,4 @@
-import ICategoriser from "./ICategoriser";
+import {ICategoriser} from "./ICategoriser";
 import { Email } from "../models/Email";
 import { IEmailCategorisation } from "./IEmailCategorisation";
 
@@ -27,5 +27,12 @@ export class DummyCategoriser implements ICategoriser {
         email.labels.push(randomCategory);
         return { label: randomCategory };
     }
-}
 
+    async emailRequiresResponse(email: Email): Promise<{
+        requiresResponse: boolean;
+        reason: string;
+        confidence: number;
+    }> {
+        return { requiresResponse: false, reason: "Dummy categoriser", confidence: 0 };
+    }
+}

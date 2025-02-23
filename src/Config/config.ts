@@ -3,10 +3,34 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-export const config = {
-    // tokenPath: path.join(__dirname, '../../gmail_token.json'),
-    // credentialsPath: path.join(__dirname, '../../Google Auth Client Secret.json'),
-    gmailScopes: [
+const webApiPort = process.env.WEB_API_PORT || 3000;
+
+const apiKeys = {
+    openai: process.env.OPENAI_API_KEY || '',
+    gemini: process.env.GEMINI_API_KEY || '',
+    vertexaiWebCreds: process.env.GOOGLE_VERTEX_AI_WEB_CREDENTIALS_JSON || { "type": "service_account", "project_id": "YOUR_PROJECT-12345", },
+    anthropic: process.env.ANTHROPIC_API_KEY || '',
+    openrouter: process.env.OPENROUTER_API_KEY || '',
+    langchain: process.env.LANGCHAIN_API_KEY || '',
+};
+
+const langchain = {
+    endpoint: process.env.LANGCHAIN_ENDPOINT || '',
+    project: process.env.LANGCHAIN_PROJECT || '',
+    tracingV2: process.env.LANGCHAIN_TRACING_V2 || '',
+    apiKey: apiKeys.langchain,
+};
+
+const openrouter = {
+    apiKey: apiKeys.openrouter,
+    apiUrl: process.env.OPENROUTER_API_URL || '',
+};
+
+const google = {
+    clientId: process.env.GOOGLE_CLIENT_ID || '',
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+    redirectUri: process.env.GOOGLE_REDIRECT_URI || `http://localhost:${webApiPort}/auth/google/callback`, // http://localhost:3000/auth/google/callback?code=4/0ASVgi3LqZJOmU7GrtxAykTlwUuKVD14UhQeV8TSrFIBmNl-u2iEMyVUiw3VgIiu1ZielNQ&scope=https://www.googleapis.com/auth/gmail.settings.sharing%20https://www.googleapis.com/auth/gmail.settings.basic%20https://www.googleapis.com/auth/gmail.modify
+    scopes: [
         'https://www.googleapis.com/auth/documents.readonly',
         'https://www.googleapis.com/auth/drive.metadata.readonly',
         'https://www.googleapis.com/auth/gmail.readonly',
@@ -17,15 +41,34 @@ export const config = {
         'https://www.googleapis.com/auth/gmail.settings.basic',
         'https://www.googleapis.com/auth/gmail.settings.sharing',
     ],
+    gmailTopic: process.env.GOOGLE_TOPIC || '',
+    llmModelsNames: [
+        "gemini-pro",
+        "gemini-pro-vision",
+        "gemini-1.5-flash",
+        "gemini-1.5-flex",
+        "gemini-1.5-pro",
+
+
+    ]
+}
+
+export const config = {
+    apiKeys,
+    langchain,
+    openrouter,
+    google,
+    // tokenPath: path.join(__dirname, '../../gmail_token.json'),
+    // credentialsPath: path.join(__dirname, '../../Google Auth Client Secret.json'),
     daemonTokenPath: path.join(process.cwd(), 'google_auth_token.json'),
     daemonCredentialsPath: path.join(process.cwd(), 'Google Cloud Client Secret for Desktop.json'),
     webAppTokenPath: path.join(process.cwd(), 'google_auth_token_web_app.json'),
     webAppCredentialsPath: path.join(process.cwd(), 'Google Cloud Client Secret for WebApp.json'),
-    gmailClientId: process.env.GOOGLE_CLIENT_ID,
-    gmailClientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    gmailRedirectUri: process.env.GOOGLE_REDIRECT_URI,
-    gmailTopic: process.env.GOOGLE_TOPIC,
-    googleClientId: process.env.GOOGLE_CLIENT_ID || '',
-    googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-    googleRedirectUri: process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/auth/google/callback', // http://localhost:3000/auth/google/callback?code=4/0ASVgi3LqZJOmU7GrtxAykTlwUuKVD14UhQeV8TSrFIBmNl-u2iEMyVUiw3VgIiu1ZielNQ&scope=https://www.googleapis.com/auth/gmail.settings.sharing%20https://www.googleapis.com/auth/gmail.settings.basic%20https://www.googleapis.com/auth/gmail.modify
+    gmailClientId: google.clientId,
+    gmailClientSecret: google.clientSecret,
+    gmailRedirectUri: google.redirectUri,
+    gmailTopic: google.gmailTopic,
+    googleClientId: google.clientId,
+    googleClientSecret: google.clientSecret,
+    googleRedirectUri: google.redirectUri,
 }

@@ -1,7 +1,8 @@
 import { IAmEmailService } from "./IAmEmailService";
 import { ILogger } from "../lib/logger/ILogger";
-import { container } from "tsyringe";
+import { container } from "../container";
 import { EmailServiceFactory } from "./EmailServiceFactory";
+import { IMockEmailRepository } from "../Repository/IMockEmailRepository";
 export class EmailServiceManager {
     private static instance: EmailServiceManager | null = null;
     private emailServices: IAmEmailService[] = [];
@@ -44,12 +45,21 @@ export class EmailServiceManager {
     }
 
     // Both of these methods are examplle methods to demonstrate that the functionality of connecting to emails is working.
-    public async fetchAndLabelLastEmails(serviceName: string, count: number): Promise<void> {
-        const service = await this.getEmailService(serviceName);
-        const emails = await service.fetchLastEmails(count);
-        for (const email of emails) {
-            await service.categoriseEmail(email);
-        }
+    public async fetchAndLabelLastEmails({ serviceName = "*", count }: { serviceName?: string, count: number }): Promise<void> {
+        this.logger.info(`Fetching and labeling last ${count} emails from ${serviceName}`);
+        const services = serviceName === "*" ? this.emailServices : [await this.getEmailService(serviceName)];
+        const promises = services.map(async service => {
+            const emails = await service.fetchLastEmails(count);
+            const categorisedEmails = await Promise.all(emails.map(async email => {
+                return await service.categoriseEmail(email);
+            }));
+            return categorisedEmails;
+        });
+        // TODO: This needs to be refactored to push messages to a the event bus and we would then need to read from the event bus by subscribing to a topic from the email listeners which are registered in the services from the worker.
+        const listOfListOfCategorisedEmails = await Promise.all(promises);
+        // what is the synatax to flatten a list of lists?
+        const categorisedEmails = listOfListOfCategorisedEmails.flat();
+        this.logger.info(`Fetched ${categorisedEmails.length} emails from [${services.map(service => service.name).join(", ")}]`);
     }
 
     public async fetchLastNEmails({ serviceName = "*", count }: { serviceName?: string, count: number }): Promise<void> {
@@ -66,4 +76,14 @@ export class EmailServiceManager {
         }
     }
 
+    public async saveLastNEmails({ serviceName = "*", count }: { serviceName?: string, count: number }): Promise<void> {
+        this.logger.info(`Saving last ${count} emails from ${serviceName}`);
+        const services = serviceName === "*" ? this.emailServices : [await this.getEmailService(serviceName)];
+        const promises = services.map(service => service.fetchLastEmails(count));
+        const listOfListOfEmails = await Promise.all(promises);
+        const emails = listOfListOfEmails.flat();
+        const emailRepository = container.resolve<IMockEmailRepository>('IMockEmailRepository');
+        await emailRepository.saveEmails(emails);
+        this.logger.info(`Saved ${emails.length} emails to mock email repository`);
+    }
 }   

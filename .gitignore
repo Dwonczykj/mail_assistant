@@ -9,3 +9,5 @@ node_modules
 logs/
 *.log
 gitleaks-report.txt
+data
+/test/mocks/*.json

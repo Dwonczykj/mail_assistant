@@ -3,7 +3,7 @@ import type { gmail_v1 } from 'googleapis';
 import { OAuth2Client, Credentials } from 'google-auth-library';
 import { authorize } from '../lib/utils/gmailAuth';
 import { config } from '../Config/config';
-import { CategoriserFactory } from "../Categoriser/LLMCategoriser";
+import { CategoriserFactory } from "../Categoriser/CategoriserFactory";
 import { GmailAdaptor } from '../models/GmailAdaptor';
 import { IEmailClient } from './IEmailClient';
 import { ILabel } from '../models/Label';
@@ -11,14 +11,20 @@ import { Email } from '../models/Email';
 import { container } from 'tsyringe';
 // import { injectable, inject } from 'tsyringe';
 import { ILogger } from '../lib/logger/ILogger';
-
+import { FyxerAction } from '../data/entity/action';
+import { IFyxerActionRepository } from './IFyxerActionRepository';
 
 export class GmailClient implements IEmailClient {
-    private authClient: OAuth2Client | null = null;
     private static instance: GmailClient | null = null;
+    private authClient: OAuth2Client | null = null;
+    private httpEmailServerClient: gmail_v1.Gmail | null = null;
+    private credentials: Credentials | null = null;
     private readonly emailAdaptor: GmailAdaptor;
     private readonly logger: ILogger;
-    private credentials: Credentials | null = null;
+    private readonly fyxerActionRepo: IFyxerActionRepository;
+    private gmailLabels: gmail_v1.Schema$Label[] = [];
+    private gmailLabelsExpireAt: Date | null = null;
+    private labelCreationLock: Promise<void> = Promise.resolve();
 
     public get credentials_access_token(): string | null {
         return this.credentials?.access_token || null;
@@ -32,6 +38,7 @@ export class GmailClient implements IEmailClient {
         this.authClient = null;
         this.emailAdaptor = new GmailAdaptor();
         this.logger = container.resolve<ILogger>('ILogger');
+        this.fyxerActionRepo = container.resolve<IFyxerActionRepository>('IFyxerActionRepository');
     }
 
     static async getInstance({
@@ -43,7 +50,9 @@ export class GmailClient implements IEmailClient {
             GmailClient.instance = new GmailClient();
         }
         if (!GmailClient.instance.authClient) {
-            await GmailClient.instance.initAuth();
+            await GmailClient.instance!.initAuth().then((oauthClient) => {
+                GmailClient.instance!.initHttpEmailServerClient(oauthClient);
+            });
         }
         return GmailClient.instance;
     }
@@ -61,18 +70,46 @@ export class GmailClient implements IEmailClient {
         return this.authClient;
     }
 
+    private initHttpEmailServerClient(oauthClient: OAuth2Client): void {
+        this.httpEmailServerClient = google.gmail({ version: 'v1', auth: oauthClient });
+    }
+
+    private async withLock<T>(operation: () => Promise<T>): Promise<T> {
+        const unlock = await this.acquireLock();
+        try {
+            return await operation();
+        } finally {
+            unlock();
+        }
+    }
+
+    /**
+     * Acquires a lock on the label creation process.
+     * This ensures that only one label creation can happen at a time.
+     * It does it by creating a new promise each time we want mutex lock(){<code>} syntax 
+     * so that each promise contains the <code> inside and the promises are chained 
+     * so that only next one can start after the previous one has finished.
+     * @returns A promise that resolves to a function to release the lock.
+     */
+    private acquireLock(): Promise<() => void> {
+        let unlockNext: () => void;
+        const previousLock = this.labelCreationLock;
+        this.labelCreationLock = new Promise<void>((resolve) => {
+            unlockNext = resolve;
+        });
+
+        return previousLock.then(() => unlockNext);
+    }
+
     /**
    * Listens for incoming emails using Gmail API's watch functionality.
    * It sets up push notifications on the "INBOX" by using a webhook/topic.
    * TODO: This will require the WebAPI application to also be running exposing our webhook.
    */
     public async listenForIncomingEmails(): Promise<void> {
-        const authClient = await this.initAuth();
-        const gmail = google.gmail({ version: 'v1', auth: authClient });
-
         try {
             const topicName: string = config.gmailTopic || 'projects/your-project/topics/your-topic';
-            const res = await gmail.users.watch({
+            const res = await this.httpEmailServerClient!.users.watch({
                 userId: 'me',
                 requestBody: {
                     labelIds: ['INBOX'],
@@ -90,11 +127,8 @@ export class GmailClient implements IEmailClient {
     public async fetchLastEmails(
         count: number
     ): Promise<Email[]> {
-        const authClient = await this.initAuth();
-        const gmail = google.gmail({ version: 'v1', auth: authClient });
-
         try {
-            const listResponse = await gmail.users.messages.list({
+            const listResponse = await this.httpEmailServerClient!.users.messages.list({
                 userId: 'me',
                 maxResults: count,
             });
@@ -102,7 +136,7 @@ export class GmailClient implements IEmailClient {
             const messagesList = listResponse.data.messages || [];
 
             const messagePromises = messagesList.map(async (msg) => {
-                const msgDetail = await gmail.users.messages.get({
+                const msgDetail = await this.httpEmailServerClient!.users.messages.get({
                     userId: 'me',
                     id: msg.id || '',
                 });
@@ -119,6 +153,77 @@ export class GmailClient implements IEmailClient {
         }
     }
 
+    private async listGmailLabels({
+        forceRefresh = false
+    }: {
+        forceRefresh?: boolean
+    } = {}): Promise<gmail_v1.Schema$Label[]> {
+        if (!this.isGmailLabelsExpired() && !forceRefresh) {
+            return this.gmailLabels;
+        }
+        const labelResponse = await this.httpEmailServerClient!.users.labels.list({
+            userId: 'me'
+        });
+        this.gmailLabels = labelResponse.data.labels || [];
+        this.gmailLabelsExpireAt = new Date(Date.now() + 1000 * 60 * 5); // 5 minutes
+        return this.gmailLabels;
+    }
+
+    private isGmailLabelsExpired(): boolean {
+        return this.gmailLabelsExpireAt ? this.gmailLabelsExpireAt < new Date() : true;
+    }
+
+    private async getOrCreateGmailLabel(label: ILabel): Promise<gmail_v1.Schema$Label> {
+        return this.withLock(async () => {
+            try {
+                // Force refresh labels to ensure we have the latest
+                const gmailLabels = await this.listGmailLabels();
+                let gmailLabel = gmailLabels.find(l => l.name === label.name);
+
+                if (!gmailLabel) {
+                    // todo: lock the a dummy object on this class whilst we create a new label
+
+                    try {
+                        const createResponse = await this.httpEmailServerClient!.users.labels.create({
+                            userId: 'me',
+                            requestBody: {
+                                name: label.name,
+                                labelListVisibility: 'labelShow',
+                                messageListVisibility: 'show'
+                            }
+                        });
+                        const newLabel = createResponse.data;
+                        this.logger.info('Created Gmail label:', { "label": newLabel });
+                        this.gmailLabels.push(newLabel);
+                        return newLabel;
+                    } catch (error: any) {
+                        // If we get a 409, the label probably exists but wasn't in our cache
+                        if (error?.code === 409 || error?.response?.status === 409) {
+                            this.logger.warn('Label creation conflict, refreshing labels and retrying...', { label: label.name });
+                            // Force cache expiry and retry getting labels
+                            this.gmailLabelsExpireAt = null;
+                            const refreshedLabels = await this.listGmailLabels({ forceRefresh: true });
+                            this.logger.info('Refreshed Gmail labels:', { "labels": refreshedLabels.map(l => l.name) });
+                            gmailLabel = refreshedLabels.find(l => l.name === label.name);
+
+                            if (gmailLabel) {
+                                return gmailLabel;
+                            }
+                            // If we still can't find it, something else is wrong
+                            throw new Error(`Unable to find or create label: ${label.name}`);
+                        }
+                        this.logger.error(`Failed to create Gmail label: [${label.name}]`, { error });
+                        throw error;
+                    }
+                }
+                return gmailLabel;
+            } catch (error) {
+                this.logger.error(`Error in getOrCreateGmailLabel: [${label.name}]`, { error });
+                throw error;
+            }
+        });
+    }
+
     /**
      * Categorises an email if not already labelled.
      * It extracts the subject, sender, snippet for body and timestamp from the Gmail message,
@@ -131,21 +236,38 @@ export class GmailClient implements IEmailClient {
         { email, label }:
             { email: Email, label: ILabel }
     ): Promise<Email> {
-        const authClient = await this.initAuth();
-        const gmail = google.gmail({ version: 'v1', auth: authClient });
         if (!email.messageId) {
             throw new Error("Email does not have an id.");
         }
-        await gmail.users.messages.modify({
+
+        const gmailLabel = await this.getOrCreateGmailLabel(label);
+
+        // Use the label ID instead of name
+        await this.httpEmailServerClient!.users.messages.modify({
             userId: 'me',
             id: email.messageId,
             requestBody: {
-                addLabelIds: [label.name],
+                addLabelIds: [gmailLabel.id!],
             },
         });
 
         // Append the new label to the email's labelIds and return the updated email.
-        email.labels = [...email.labels, label.name];
+        if (!email.labels) {
+            email.labels = [];
+        }
+        if (!email.labels.includes(label.name)) {
+            email.labels.push(label.name);
+        }
+
+        this.logger.info(`Email categorised with subject: ${email.subject} -> Label: ${label.name}`, { "email": email });
+        this.fyxerActionRepo.create({
+            actionName: 'categoriseEmail',
+            actionData: JSON.stringify({
+                email: email,
+                label: label,
+            }),
+            createdAt: new Date(),
+        });
         return email;
     }
 
@@ -154,7 +276,7 @@ export class GmailClient implements IEmailClient {
             clientId: string;
             clientSecret: string;
             redirectUri: string;
-    }): Promise<void> {
+        }): Promise<void> {
         this.authClient = new OAuth2Client({
             clientId: credentials.clientId,
             clientSecret: credentials.clientSecret,

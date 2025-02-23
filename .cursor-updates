@@ -1,0 +1,3 @@
+Added SQLite database configuration and implemented generic repository pattern with CRUD operations 
+
+Implemented dependency injection for database repositories and moved database initialization to container 

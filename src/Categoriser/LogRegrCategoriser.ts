@@ -1,8 +1,16 @@
 import { Email } from "../models/Email";
+import { ICategoriser } from "./ICategoriser";
 import { IEmailCategorisation } from "./IEmailCategorisation";
 
-export interface ICategoriser {
-    categoriseEmail(email: Email): Promise<IEmailCategorisation>;
+
+
+export class LogRegrCategoriser implements ICategoriser {
+    constructor(private logisticRegressorML: any) {
+        // TODO: Use the Hugging Face Transformers API to connect to a collection of ML transformer models for each different method below. i.e. Create a map of the different models so that they can be easily called from the methods below.
+    }
+    categoriseEmail(email: Email): Promise<IEmailCategorisation> {
+        throw new Error("Method not implemented.");
+    }
 
     /**
      * Determines if an email requires a response based on the logistic regressor model.
@@ -13,5 +21,7 @@ export interface ICategoriser {
         requiresResponse: boolean;
         reason: string;
         confidence: number;
-    }>;
+    }> {
+        throw new Error("Method not implemented.");
+    }
 }

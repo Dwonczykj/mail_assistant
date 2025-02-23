@@ -16,6 +16,11 @@ export class WinstonLogger implements ILogger {
             ),
             transports: [
                 new transports.Console(),
+                new transports.Console(
+                    {
+                        debugStdout: true,
+                    }
+                ),
                 new DailyRotateFile({
                     filename: 'logs/application-%DATE%.log',
                     datePattern: 'YYYY-MM-DD',
@@ -27,19 +32,19 @@ export class WinstonLogger implements ILogger {
         });
     }
 
-    debug(message: string, meta?: Record<string, unknown>): void {
-        this.logger.debug(message, meta);
+    debug(message: any, meta?: any): void {
+        this.logger.debug(message?.toString() || "", meta);
     }
 
-    info(message: string, meta?: Record<string, unknown>): void {
-        this.logger.info(message, meta);
+    info(message: any, meta?: any): void {
+        this.logger.info(message?.toString() || "", meta);
     }
 
-    warn(message: string, meta?: Record<string, unknown>): void {
-        this.logger.warn(message, meta);
+    warn(message: any, meta?: any): void {
+        this.logger.warn(message?.toString() || "", meta);
     }
 
-    error(message: string, meta?: Record<string, unknown>): void {
-        this.logger.error(message, meta);
+    error(message: any, meta?: any): void {
+        this.logger.error(message?.toString() || "", meta);
     }
 } 

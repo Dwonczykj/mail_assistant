@@ -1,8 +1,12 @@
+import { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { LLMCategoriser } from "../../src/Categoriser/LLMCategoriser";
 import { Email } from "../../src/models/Email";
 
 // Define a fake LLM to simulate responses.
-const fakeLLM = {
+const fakeLLM: jest.Mocked<Partial<BaseChatModel> & {
+    withStructuredOutput: jest.Mock;
+    invoke: jest.Mock;
+}> = {
     // Mimic the chaining of withStructuredOutput().invoke()
     withStructuredOutput: jest.fn().mockReturnThis(),
     invoke: jest.fn().mockResolvedValue({
@@ -45,7 +49,7 @@ describe("LLMCategoriser", () => {
         expect(fakeLLM.invoke).toHaveBeenCalled();
         // Verify the fake response was returned.
         expect(result.label).toEqual("Work");
-        expect(result.confidence).toEqual(1);
+        expect(result.labelConfidence).toEqual(1);
         expect(result.reason).toBeDefined();
     });
 

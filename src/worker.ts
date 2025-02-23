@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import './container';
+import { ILogger } from './lib/logger/ILogger';
 import { initServices } from './services';
-
+import { container } from './container';
 /**
  * Entry point for the async daemon Node.js TypeScript application.
  * This script will be run by PM2 as the daemon's entrypoint.
@@ -23,11 +24,15 @@ async function main(): Promise<void> {
 
     const { emailServiceManager } = await initServices();
 
+    const logger = container.resolve<ILogger>('ILogger');
+
+    await emailServiceManager.saveLastNEmails({ serviceName: "*", count: 10 });
+    await emailServiceManager.fetchAndLabelLastEmails({ serviceName: "*", count: 10 });
     // Example daemon loop: replace this with actual daemon logic
     while (true) {
-        await emailServiceManager.fetchLastNEmails({ serviceName: "*", count: 10 });
-
+        // POLL for new emails every 60 seconds? before we register the webhook to process each new email for us rather than running this daemon.
         await new Promise<void>(resolve => setTimeout(resolve, 60000));
+
     }
 }
 

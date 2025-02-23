@@ -2,8 +2,8 @@
  * ILogger Interface - defines common logging methods.
  */
 export interface ILogger {
-    debug(message: string, meta?: Record<string, unknown>): void;
-    info(message: string, meta?: Record<string, unknown>): void;
-    warn(message: string, meta?: Record<string, unknown>): void;
-    error(message: string, meta?: Record<string, unknown>): void;
+    debug(message: any, meta?: any): void;
+    info(message: any, meta?: any): void;
+    warn(message: any, meta?: any): void;
+    error(message: any, meta?: any): void;
 } 

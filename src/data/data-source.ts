@@ -1,17 +1,11 @@
 import { DataSource } from "typeorm";
-import { EmailAction } from "./entity/action";
-
+import { FyxerAction } from "./entity/action";
+import path from "path";
 
 export const AppDataSource = new DataSource({
-    type: "postgres",
-    host: "localhost",
-    port: 5432,
-    username: "test",
-    password: "test",
-    database: "test",
-    synchronize: true,
+    type: "sqlite",
+    database: path.join(process.cwd(), "data", "fyxer.sqlite"),
+    entities: [FyxerAction],
+    synchronize: true, // Be careful with this in production
     logging: true,
-    entities: [EmailAction],
-    subscribers: [],
-    migrations: [],
 })

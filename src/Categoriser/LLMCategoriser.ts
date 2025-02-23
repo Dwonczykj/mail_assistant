@@ -1,11 +1,16 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { BaseChatModel } from "@langchain/core/language_models/chat_models";
+import { LLM, type BaseLLMParams } from "@langchain/core/language_models/llms";
 import { HumanMessage } from "@langchain/core/messages";
-import ICategoriser from "./ICategoriser";
+import { ICategoriser } from "./ICategoriser";
 import { Email } from "../models/Email";
 import { IEmailCategorisation } from "./IEmailCategorisation";
 import { EmailCategorisation } from "./EmailCategorisation";
-
+import { StructuredOutputParser } from "langchain/output_parsers";
+import { PromptTemplate } from "@langchain/core/prompts";
+import { z } from "zod";
+import { injectable, inject } from "tsyringe";
+import { ILogger } from "../lib/logger/ILogger";
 
 
 /**
@@ -18,6 +23,7 @@ export interface IEmailData {
     timestamp: string;
 }
 
+@injectable()
 export class LLMCategoriser implements ICategoriser {
     private static labels = [
         "Primary",
@@ -30,8 +36,21 @@ export class LLMCategoriser implements ICategoriser {
         "Other"
     ];
 
-    constructor(private llm: BaseChatModel) {
+    constructor(private llm: BaseChatModel | LLM, @inject("ILogger") private logger: ILogger) {
         // Existing constructor logic
+    }
+
+    /**
+     * Determines if an email requires a response based on the logistic regressor model.
+     * @param email - The email to categorise.
+     * @returns A promise containing the result of the categorisation where requiresResponse is true if the email requires a response, false otherwise and confidence is the probability of the email requiring a response.
+     */
+    emailRequiresResponse(email: Email): Promise<{
+        requiresResponse: boolean;
+        reason: string;
+        confidence: number;
+    }> {
+        throw new Error("Method not implemented.");
     }
 
     /**
@@ -55,35 +74,159 @@ export class LLMCategoriser implements ICategoriser {
             throw new Error("Email timestamp is empty");
         }
 
-        // Compose email details for the prompt.
+        // Define the parser
+        const parser = StructuredOutputParser.fromZodSchema(
+            z.object({
+                label: z.enum(LLMCategoriser.labels as [string, ...string[]]),
+                labelConfidence: z.number(),
+                reason: z.string()
+            } as { [key in keyof IEmailCategorisation]: z.ZodType<IEmailCategorisation[key]> })
+        );
+
+        // Get the format instructions
+        const formatInstructions = parser.getFormatInstructions();
+
+        // Compose email details for the prompt
         const emailDetails = `Subject: ${email.subject}
 From: ${email.sender}
 Body: ${email.body}
 Timestamp: ${email.timestamp}`;
-        const labels = LLMCategoriser.labels;
-        // Updated prompt including detailed email information excluding attachments.
-        const prompt = `
-You are a helpful assistant that categorises emails into one of the following labels:
-${labels.join(", ")}
+
+        // Create a formatted prompt
+        const prompt = new PromptTemplate({
+            template: `You are a helpful assistant that categorises emails.
 Based on the following email details (excluding attachments):
-${emailDetails}
-`;
-        const response = await this.llm.withStructuredOutput(EmailCategorisation).invoke([new HumanMessage(prompt)]);
-        return response.content;
-    }
-}
+{emailDetails}
 
-export class CategoriserFactory {
-    /**
-     * Creates an instance of an ICategoriser using the ChatOpenAI model.
-     * @returns An instance of LLMCategoriser.
-     */
-    static createCategoriser(): LLMCategoriser {
-        const llm = new ChatOpenAI({
-            model: "gpt-4o-mini",
-            temperature: 0,
+Categorize this email into one of the following labels:
+{labels}
+
+{format_instructions}
+
+Provide your response:`,
+            inputVariables: ["emailDetails", "labels"],
+            partialVariables: {
+                format_instructions: formatInstructions
+            }
         });
-        return new LLMCategoriser(llm);
+
+        const formattedPrompt = await prompt.format({
+            emailDetails: emailDetails,
+            labels: LLMCategoriser.labels.join(", ")
+        });
+
+        if (this.llm instanceof BaseChatModel) {
+            // Bind the schema to the model
+            const modelWithStructure = this.llm.withStructuredOutput<IEmailCategorisation>(parser);
+            // Invoke the model
+            const structuredOutput = await modelWithStructure.invoke(
+                formattedPrompt
+            );
+
+            // Get back the object
+            this.logger.info(structuredOutput);
+            if (structuredOutput && ((structuredOutput.labelConfidence ?? 0) < 0 || (structuredOutput.labelConfidence ?? 0) > 1)) {
+                this.logger.warn("Label confidence is out of range");
+                structuredOutput.labelConfidence = 0.5;
+            }
+
+            return structuredOutput;
+            // { answer: "The powerhouse of the cell is the mitochondrion. Mitochondria are organelles that generate most of the cell's supply of adenosine triphosphate (ATP), which is used as a source of chemical energy.", followup_question: "What is the function of ATP in the cell?" }
+            // const schema = {
+            //     type: "object",
+            //     properties: {
+            //         label: {
+            //             type: "string",
+            //             enum: LLMCategoriser.labels
+            //         },
+            //         labelConfidence: {
+            //             type: "number",
+            //             minimum: 0,
+            //             maximum: 1
+            //         },
+            //         reason: {
+            //             type: "string"
+            //         }
+            //     },
+            //     required: ["label", "labelConfidence", "reason"]
+            // };
+
+            // const response = await this.llm.invoke([new HumanMessage(formattedPrompt)], {
+            //     response_format: { type: "json_object", schema: schema }
+            // });
+
+            // try {
+            //     const content = JSON.parse(response.content);
+            //     return {
+            //         label: content.label,
+            //         labelConfidence: content.labelConfidence,
+            //         reason: content.reason
+            //     };
+            // } catch (error) {
+            //     console.error("Failed to parse ChatModel response:", error);
+            //     return {
+            //         label: "Other",
+            //         labelConfidence: 0.5,
+            //         reason: "Failed to parse JSON response from LLM"
+            //     };
+            // }
+        } else {
+            const response = await this.llm.invoke(formattedPrompt);
+            try {
+                const parsedResponse = await parser.parse(response);
+                return {
+                    label: parsedResponse.label,
+                    labelConfidence: parsedResponse.labelConfidence as number,
+                    reason: parsedResponse.reason as string
+                };
+            } catch (error) {
+                console.error("Failed to parse LLM response:", error);
+                // Fallback response if parsing fails
+                return {
+                    label: "Other",
+                    labelConfidence: 0.5,
+                    reason: "Failed to parse structured response from LLM"
+                };
+            }
+        }
+    }
+
+    private async parseOllamaResponse(response: string): Promise<IEmailCategorisation> {
+        try {
+            // First try parsing as JSON
+            if (response.includes('{') && response.includes('}')) {
+                const jsonStr = response.substring(
+                    response.indexOf('{'),
+                    response.lastIndexOf('}') + 1
+                );
+                const parsed = JSON.parse(jsonStr);
+                if (parsed.label && parsed.confidence && parsed.reason) {
+                    return {
+                        label: parsed.label,
+                        labelConfidence: parsed.confidence,
+                        reason: parsed.reason
+                    };
+                }
+            }
+
+            // Fallback: Basic text parsing
+            const lines = response.split('\n');
+            const label = LLMCategoriser.labels.find(l =>
+                response.toLowerCase().includes(l.toLowerCase())
+            ) || "Other";
+
+            return {
+                label,
+                labelConfidence: 0.7, // Default confidence
+                reason: response.slice(0, 200) // Use first 200 chars as reason
+            };
+        } catch (error) {
+            console.error("Failed to parse Ollama response:", error);
+            return {
+                label: "Other",
+                labelConfidence: 0.5,
+                reason: "Failed to parse response"
+            };
+        }
     }
 }
-

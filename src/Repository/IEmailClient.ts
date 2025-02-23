@@ -6,6 +6,9 @@ import { ILabel } from "../models/Label";
  * @param T - The type of the email object.
  */
 export interface IEmailClient {
+
+    
+
     /**
      * Starts listening for incoming emails through Gmail push notifications.
      */

@@ -1,18 +1,20 @@
-import { CategoriserFactory } from "../Categoriser/LLMCategoriser";
+import { CategoriserFactory } from "../Categoriser/CategoriserFactory";
+import { ICategoriser } from "../Categoriser/ICategoriser";
 import { Email } from "../models/Email";
 import { GmailAdaptor } from "../models/GmailAdaptor";
 import { LabelFactory } from "../models/Label";
 import { GmailClient } from "../Repository/GmailClient";
 import { IEmailClient } from "../Repository/IEmailClient";
 import { IAmEmailService } from "./IAmEmailService";
-
+import { container } from "../container";
+import { ILogger } from "../lib/logger/ILogger";
 
 export class EmailService implements IAmEmailService {
-    
-    private readonly emailAdaptor = new GmailAdaptor();
 
-    constructor(private readonly emailClient: IEmailClient, public readonly name: string,) {
-        
+    private readonly emailAdaptor = new GmailAdaptor(); // TODO: this is a code smell, we should only have a GmailAdaptor in the GmailService subclass of EmailService.
+
+    constructor(private readonly emailClient: IEmailClient, public readonly name: string, private readonly logger: ILogger) {
+
     }
 
     /**
@@ -27,17 +29,16 @@ export class EmailService implements IAmEmailService {
         const existingLabels = email.labels || [];
         const hasCategorisedLabel = existingLabels.some(label => LabelFactory.isValidLabel(label));
         if (hasCategorisedLabel) {
-            console.log("Email is already categorised.");
+            this.logger.info("Email is already categorised.");
             return email;
         }
 
         // Create a categoriser instance using the factory and pass the extracted email details.
-        const categoriser = CategoriserFactory.createCategoriser();
+        const categoriser = container.resolve<ICategoriser>('ICategoriser');
 
         // const email = emailAdaptor.adapt(gmailEmailMessage);
         const categorisation = await categoriser.categoriseEmail(email);
-        // TODO: replace all console.logs with a logger that uses dependency injection provided by inversify.
-        console.log("Categorisation result:", categorisation);
+        this.logger.info("Categorisation result:", categorisation);
 
         await this.emailClient.categoriseEmail(
             {
