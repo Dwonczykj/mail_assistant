@@ -1,0 +1,47 @@
+graph TD
+    subgraph Application
+        A[Email Service Manager] --> B[Email Service Factory]
+        B --> |Creates| C[Email Service]
+        C --> |Uses| D[Gmail Client]
+        C --> |Uses| E[LLM Categoriser]
+        
+        subgraph "Factory Pattern"
+            B
+            F[Categoriser Factory]
+        end
+        
+        subgraph "Strategy Pattern"
+            E --> F
+            F --> |Creates| G[Different Categorisers]
+        end
+        
+        subgraph "Repository Pattern"
+            D --> H[Gmail API]
+        end
+        
+        subgraph "Dependency Injection"
+            I[ILogger Interface] --> |Implements| J[Winston Logger]
+            C --> |Uses| I
+        end
+        
+        subgraph "Domain Models"
+            K[Label Model]
+            L[Email Model]
+        end
+        
+        C --> K
+        C --> L
+        E --> K
+    end
+
+    %% Design Principles
+    classDef solid fill:#f9f,stroke:#333,stroke-width:2px
+    class A,C,E solid
+    
+    %% Patterns
+    classDef factory fill:#bbf,stroke:#333,stroke-width:2px
+    class B,F factory
+    
+    %% Interfaces
+    classDef interface fill:#bfb,stroke:#333,stroke-width:2px
+    class I interface
