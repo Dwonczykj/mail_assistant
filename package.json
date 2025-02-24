@@ -18,7 +18,10 @@
     "start:web:prod": "pm2 start src/web/main.ts --name mail-assistant-web",
     "start:web:dev": "ts-node src/web/main.ts",
     "start:all:prod": "concurrently \"npm run start:daemon:prod\" \"npm run start:web:prod\"",
-    "start:all:dev": "concurrently \"npm run start:daemon:dev\" \"npm run start:web:dev\""
+    "start:all:dev": "concurrently \"npm run start:daemon:dev\" \"npm run start:web:dev\"",
+    "start:ngrok": "ngrok http 3000",
+    "update-webhook": "ts-node src/scripts/update-webhook.ts",
+    "web:dev:with-webhook": "concurrently \"npm run start:web:dev\" \"npm run start:ngrok\" \"wait-on http://localhost:4040 && npm run update-webhook\""
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -34,6 +37,7 @@
     "@types/node": "^22.13.4",
     "@types/pg": "^8.11.11",
     "@types/supertest": "^6.0.2",
+    "axios": "^1.7.9",
     "concurrently": "^9.1.2",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
@@ -49,11 +53,13 @@
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.3",
-    "typescript-eslint": "^8.20.0"
+    "typescript-eslint": "^8.20.0",
+    "wait-on": "^7.0.1"
   },
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
   "dependencies": {
     "@google-cloud/local-auth": "^3.0.1",
+    "@google-cloud/pubsub": "^4.10.0",
     "@langchain/anthropic": "^0.3.13",
     "@langchain/core": "^0.3.40",
     "@langchain/google-genai": "^0.1.8",

@@ -1,9 +1,11 @@
 import { GmailClient } from "./GmailClient";
 import { IEmailClient } from "./IEmailClient";
-import type { gmail_v1 } from 'googleapis';
+import { container } from "../container";
+import { IGmailAuth } from "../lib/utils/IGmailAuth";
 
 export class EmailClientFactory {
     static async getGmailClient(): Promise<IEmailClient> {
-        return await GmailClient.getTemporaryInstance({});
+        const googleAuthInitialiser = container.resolve<IGmailAuth>('IGmailAuth');
+        return await GmailClient.getTemporaryInstance({ authProvider: googleAuthInitialiser });
     }
 }

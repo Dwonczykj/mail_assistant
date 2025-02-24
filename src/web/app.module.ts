@@ -4,6 +4,8 @@ import { ConfigModule } from '@nestjs/config';
 import { GmailInitService } from './initialization/gmail-init.service';
 import { createRedisClient } from '../lib/redis/RedisProvider';
 import { WinstonLogger } from '../lib/logger/WinstonLogger';
+import { GmailWebhookController } from './controllers/gmail-webhook.controller';
+import { GmailAuthForWeb } from '../lib/utils/gmailAuth';
 
 @Module({
     imports: [
@@ -23,7 +25,14 @@ import { WinstonLogger } from '../lib/logger/WinstonLogger';
             useFactory: () => {
                 return new WinstonLogger();
             }
+        },
+        {
+            provide: 'IGoogleAuth',
+            useClass: GmailAuthForWeb
         }
+    ],
+    controllers: [
+        GmailWebhookController
     ],
 })
 export class AppModule { } 

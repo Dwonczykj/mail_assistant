@@ -38,7 +38,7 @@
       "cwd": "${workspaceFolder}",
       "runtimeArgs": [
         "run-script",
-        "start:web:dev"
+        "web:dev:with-webhook"
       ],
       "runtimeExecutable": "npm",
       "skipFiles": [

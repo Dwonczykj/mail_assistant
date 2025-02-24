@@ -1,7 +1,6 @@
 import { google } from 'googleapis';
 import type { gmail_v1 } from 'googleapis';
 import { OAuth2Client, Credentials } from 'google-auth-library';
-import { authorize } from '../lib/utils/gmailAuth';
 import { config } from '../Config/config';
 import { CategoriserFactory } from "../Categoriser/CategoriserFactory";
 import { GmailAdaptor } from '../models/GmailAdaptor';
@@ -16,6 +15,8 @@ import { IFyxerActionRepository } from './IFyxerActionRepository';
 import Redis from 'ioredis';
 import { createRedisClient } from '../lib/redis/RedisProvider';
 import { redisConfig } from '../lib/redis/RedisConfig';
+import { pubSubConfig } from '../Config/pubSubConfig';
+import { IGmailAuth } from '../lib/utils/IGmailAuth';
 
 export class GmailClient implements IEmailClient {
     private static instance: GmailClient | null = null;
@@ -25,7 +26,6 @@ export class GmailClient implements IEmailClient {
     private readonly emailAdaptor: GmailAdaptor;
     private readonly logger: ILogger;
     private readonly fyxerActionRepo: IFyxerActionRepository;
-    private readonly redisClient: Redis;
     private gmailLabels: gmail_v1.Schema$Label[] = [];
     private gmailLabelsExpireAt: Date | null = null;
     private labelCreationLock: Promise<void> = Promise.resolve();
@@ -38,74 +38,22 @@ export class GmailClient implements IEmailClient {
         return this.credentials?.expiry_date || null;
     }
 
-    constructor(
-        redisClient: Redis = createRedisClient()
-    ) {
+    constructor() {
         this.authClient = null;
-        this.redisClient = redisClient;
         this.emailAdaptor = new GmailAdaptor();
         this.logger = container.resolve<ILogger>('ILogger');
         this.fyxerActionRepo = container.resolve<IFyxerActionRepository>('IFyxerActionRepository');
     }
 
     static async getTemporaryInstance({
-        sender,
+        authProvider,
     }: {
-        sender?: string | undefined,
+        authProvider: IGmailAuth,
     }): Promise<GmailClient> {
-        if (!GmailClient.instance) {
-            GmailClient.instance = new GmailClient();
-            // Try to initialize with stored tokens
-            const [token, expiry] = await Promise.all([
-                GmailClient.instance.redisClient.get(redisConfig.keys.gmail.oauth.token),
-                GmailClient.instance.redisClient.get(redisConfig.keys.gmail.oauth.expiry)
-            ]);
-
-            if (token && expiry) {
-                await GmailClient.instance.initWithStoredCredentials({
-                    access_token: token,
-                    expiry_date: parseInt(expiry)
-                });
-            } else {
-                if (GmailClient.instance.credentials_access_token && GmailClient.instance.credentials_expiry_date && GmailClient.instance.credentials_expiry_date > Date.now()) {
-                    await Promise.all([
-                        GmailClient.instance.redisClient.set(redisConfig.keys.gmail.oauth.token, GmailClient.instance.credentials_access_token),
-                        GmailClient.instance.redisClient.set(redisConfig.keys.gmail.oauth.expiry, GmailClient.instance.credentials_expiry_date.toString())
-                    ]);
-                    GmailClient.instance.logger.debug("Access token cached successfully.");
-                }
-            }
-        }
-        // if (!GmailClient.instance.authClient) {
-        //     await GmailClient.instance!.initAuth().then((oauthClient) => {
-        //         GmailClient.instance!.initHttpEmailServerClient(oauthClient);
-        //     });
-        // }
+        GmailClient.instance ??= new GmailClient();
+        GmailClient.instance.authClient = await authProvider.initializeGoogleClient();
+        GmailClient.instance.httpEmailServerClient = google.gmail({ version: 'v1', auth: GmailClient.instance.authClient });
         return GmailClient.instance;
-    }
-
-    private async initWithStoredCredentials(credentials: Credentials): Promise<void> {
-        this.credentials = credentials;
-        this.authClient = new OAuth2Client();
-        this.authClient.setCredentials(credentials);
-        this.initHttpEmailServerClient(this.authClient);
-    }
-
-    /**
-     * Ensures that the GmailClient has an authenticated OAuth2 client.
-     * If not already authenticated, it initializes authentication.
-     * @returns The authenticated OAuth2Client.
-     */
-    private async initAuth(): Promise<OAuth2Client> {
-        // NOTE: ONLY TO BE USED FOR DESKTOP AUTH, NOT FOR WEB API AUTH.
-        if (!this.authClient) {
-            this.authClient = await authorize();
-        }
-        return this.authClient;
-    }
-
-    private initHttpEmailServerClient(oauthClient: OAuth2Client): void {
-        this.httpEmailServerClient = google.gmail({ version: 'v1', auth: oauthClient });
     }
 
     private async withLock<T>(operation: () => Promise<T>): Promise<T> {
@@ -137,12 +85,12 @@ export class GmailClient implements IEmailClient {
 
     /**
    * Listens for incoming emails using Gmail API's watch functionality.
-   * It sets up push notifications on the "INBOX" by using a webhook/topic.
-   * TODO: This will require the WebAPI application to also be running exposing our webhook.
+   * It sets up push notifications on the "INBOX" by using a webhook/topic that is setup in the Google Cloud Pub/Sub console and routes to our WebAPI application.
    */
     public async listenForIncomingEmails(): Promise<void> {
         try {
-            const topicName: string = config.gmailTopic || 'projects/your-project/topics/your-topic';
+            const topicName: string = config.google.gmailTopic || pubSubConfig.topicName;
+            const subscriptionName: string = config.google.gmailSubscription || pubSubConfig.subscriptionName;
             const res = await this.httpEmailServerClient!.users.watch({
                 userId: 'me',
                 requestBody: {
@@ -215,8 +163,6 @@ export class GmailClient implements IEmailClient {
                 let gmailLabel = gmailLabels.find(l => l.name === label.name);
 
                 if (!gmailLabel) {
-                    // todo: lock the a dummy object on this class whilst we create a new label
-
                     try {
                         const createResponse = await this.httpEmailServerClient!.users.labels.create({
                             userId: 'me',
@@ -303,47 +249,5 @@ export class GmailClient implements IEmailClient {
             createdAt: new Date(),
         });
         return email;
-    }
-
-    public async configureOAuth(
-        credentials: {
-            clientId: string;
-            clientSecret: string;
-            redirectUri: string;
-        }): Promise<void> {
-        this.authClient = new OAuth2Client({
-            clientId: credentials.clientId,
-            clientSecret: credentials.clientSecret,
-            redirectUri: credentials.redirectUri,
-        });
-
-        this.logger.info('Google OAuth2 client configured');
-    }
-
-    public getAuthUrl(): string {
-        if (!this.authClient) {
-            throw new Error('OAuth2 client not configured');
-        }
-
-        return this.authClient.generateAuthUrl({
-            access_type: 'offline',
-            scope: [
-                'https://www.googleapis.com/auth/gmail.readonly',
-                'https://www.googleapis.com/auth/gmail.modify',
-                'https://www.googleapis.com/auth/gmail.labels'
-            ],
-        });
-    }
-
-    public async handleOAuthCallback(code: string): Promise<void> {
-        if (!this.authClient) {
-            throw new Error('OAuth2 client not configured');
-        }
-
-        const { tokens } = await this.authClient.getToken(code);
-        this.authClient.setCredentials(tokens);
-        this.credentials = tokens;
-
-        this.logger.info('OAuth2 tokens received and set');
     }
 } 

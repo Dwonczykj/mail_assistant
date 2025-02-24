@@ -3,14 +3,19 @@ import { ILogger } from "../lib/logger/ILogger";
 import { container } from "../container";
 import { EmailServiceFactory } from "./EmailServiceFactory";
 import { IMockEmailRepository } from "../Repository/IMockEmailRepository";
+import { ProcessedObjectRepository } from '../Repository/ProcessedObjectRepository';
+import { ObjectType } from '../data/entity/ProcessedObject';
+
 export class EmailServiceManager {
     private static instance: EmailServiceManager | null = null;
     private emailServices: IAmEmailService[] = [];
     private logger: ILogger;
+    private processedObjectRepo: ProcessedObjectRepository;
 
     private constructor() {
         this.emailServices = [];
         this.logger = container.resolve<ILogger>('ILogger');
+        this.processedObjectRepo = container.resolve(ProcessedObjectRepository);
     }
 
     public static getInstance(): EmailServiceManager {
@@ -85,5 +90,48 @@ export class EmailServiceManager {
         const emailRepository = container.resolve<IMockEmailRepository>('IMockEmailRepository');
         await emailRepository.saveEmails(emails);
         this.logger.info(`Saved ${emails.length} emails to mock email repository`);
+    }
+
+    public async processObjects({
+        serviceName = "*",
+        lastNHours = 24,
+        objectType = "*" as ObjectType
+    }: {
+        serviceName?: string;
+        lastNHours?: number;
+        objectType?: ObjectType;
+    }): Promise<void> {
+        this.logger.info(`Processing objects from last ${lastNHours} hours for service ${serviceName} of type ${objectType}`);
+
+        const objects = await this.processedObjectRepo.findByTimeRange({
+            lastNHours,
+            objectType
+        });
+
+        this.logger.info(`Found ${objects.length} objects to process`);
+
+        // Process each object based on its type
+        for (const object of objects) {
+            try {
+                switch (object.type) {
+                    case 'email':
+                        await this.processEmail(object);
+                        break;
+                    // Add other object type processing as needed
+                    default:
+                        this.logger.warn(`Unhandled object type: ${object.type}`);
+                }
+            } catch (error) {
+                this.logger.error(`Error processing object ${object.id}`, { error });
+            }
+        }
+    }
+
+    private async processEmail(object: any): Promise<void> {
+        // Implement email processing logic
+        const services = this.emailServices;
+        for (const service of services) {
+            await service.categoriseEmail(JSON.parse(object.result));
+        }
     }
 }   

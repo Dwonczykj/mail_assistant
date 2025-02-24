@@ -3,47 +3,33 @@ import { GmailClient } from '../../Repository/GmailClient';
 import { config } from '../../Config/config';
 import Redis from 'ioredis';
 import { ILogger } from '../../lib/logger/ILogger';
-
+import { redisConfig } from '../../lib/redis/RedisConfig';
+import { OAuth2Client } from 'google-auth-library';
+import { IGmailAuth } from '../../lib/utils/IGmailAuth';
+import { google } from 'googleapis';
 @Injectable()
 export class GmailInitService implements OnModuleInit {
     constructor(
         @Inject('REDIS_CLIENT')
         private readonly redis: Redis,
         @Inject('ILogger')
-        private readonly logger: ILogger
+        private readonly logger: ILogger,
+        @Inject('IGoogleAuth')
+        private readonly googleAuth: IGmailAuth
     ) { }
 
     async onModuleInit() {
-        await this.initializeGmailClient();
+        await this.initializeGoogleClient();
     }
 
-    private async initializeGmailClient(): Promise<void> {
+    async initializeGoogleClient(): Promise<GmailClient> {
         try {
-            const [token, expiry] = await Promise.all([
-                this.redis.get('gmail:oauth:token'),
-                this.redis.get('gmail:oauth:expiry')
-            ]);
-
-            // Check if token exists and is not expired
-            if (token && expiry && Date.now() < parseInt(expiry)) {
-                this.logger.info('Valid Gmail token found in Redis cache');
-                return;
-            }
-
-            // Initialize new Gmail client and configure OAuth
-            const gmailClient = await GmailClient.getTemporaryInstance({ sender: "webapp" });
-            this.logger.info('Configuring Gmail OAuth for webapp initialization...');
-
-            await gmailClient.configureOAuth({
-                clientId: config.googleClientId,
-                clientSecret: config.googleClientSecret,
-                redirectUri: config.googleRedirectUri,
-            });
-
+            const gmailClient = await GmailClient.getTemporaryInstance({ authProvider: this.googleAuth });
             this.logger.info('Gmail client initialized during bootstrap');
+            return gmailClient;
         } catch (error) {
             this.logger.error('Failed to initialize Gmail client during bootstrap:', { error });
-            // Don't throw error - allow application to start even if Gmail init fails
+            throw error;
         }
     }
 } 

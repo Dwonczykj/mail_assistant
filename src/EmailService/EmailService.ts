@@ -8,6 +8,7 @@ import { IEmailClient } from "../Repository/IEmailClient";
 import { IAmEmailService } from "./IAmEmailService";
 import { container } from "../container";
 import { ILogger } from "../lib/logger/ILogger";
+import { BadClientError } from "./errors/EmailServiceErrors";
 
 export class EmailService implements IAmEmailService {
 
@@ -52,6 +53,15 @@ export class EmailService implements IAmEmailService {
 
     async fetchLastEmails(count: number) {
         return await this.emailClient.fetchLastEmails(count);
+    }
+
+    public async listenForIncomingEmails(): Promise<void> {
+        if (this.emailClient instanceof GmailClient) {
+            await this.emailClient.listenForIncomingEmails();
+        } else {
+            this.logger.error("Email client is not a GmailClient");
+            throw new BadClientError("Email client is not a GmailClient");
+        }
     }
 
     // TODO: Challenge task, draw out a system diagram for this project (10 minutes and explain why you have included each component and what you would do if you had more time)

@@ -30,5 +30,5 @@ export interface IAmEmailService {
 
     // archiveEmail(email: Email): Promise<Email>;
 
-
+    listenForIncomingEmails(): Promise<void>;
 }

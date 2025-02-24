@@ -141,3 +141,68 @@ This architecture ensures:
 - Simple addition of new email providers or categorizers
 - Clear separation of concerns
 - Scalability through modular design
+
+## Local Development Setup
+
+1. Install and initialize gcloud CLI:
+   ```bash
+   gcloud init
+   gcloud auth application-default login
+   ```
+
+2. Set your project:
+   ```bash
+   gcloud config set project your-project-id
+   ```
+
+3. Create the pubsub topic:
+    ```
+    gcloud pubsub topics create gmail-notifications
+
+    ```
+4. Grant Gmail permission to publish to the topic:
+   ```bash
+   gcloud pubsub topics add-iam-policy-binding gmail-notifications \
+     --member="serviceAccount:gmail-api-push@system.gserviceaccount.com" \
+     --role="roles/pubsub.publisher"
+   ```
+
+5. Create a push subscription for your webhook:
+   ```bash
+   gcloud pubsub subscriptions create gmail-notifications-sub \
+     --topic=gmail-notifications \
+     --push-endpoint=https://your-domain.com/webhooks/gmail
+   ```
+
+6. For local testing, use ngrok:
+   ```bash
+   ngrok http 3000
+   ```
+   Then update API_BASE_URL in .env with your ngrok URL
+
+## Running the application:
+
+1. Install ngrok globally:
+   ```bash
+   # Using npm
+   npm install -g ngrok
+   # OR using homebrew on macOS
+   brew install ngrok
+   # OR download from https://ngrok.com/download
+   ```
+
+2. Install wait-on for script coordination:
+   ```bash
+   npm install -g wait-on
+   ```
+
+3. Start the development server with webhook:
+   ```bash
+   npm run web:dev:with-webhook
+   ```
+
+This will:
+- Start your web server
+- Start ngrok
+- Wait for ngrok to be ready
+- Update the Pub/Sub subscription with the ngrok URL

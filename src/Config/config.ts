@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const webApiPort = process.env.WEB_API_PORT || 3000;
+const webApiBaseUrl = process.env.API_BASE_URL || `http://localhost:${webApiPort}`;
 
 const apiKeys = {
     openai: process.env.OPENAI_API_KEY || '',
@@ -42,6 +43,8 @@ const google = {
         'https://www.googleapis.com/auth/gmail.settings.sharing',
     ],
     gmailTopic: process.env.GOOGLE_TOPIC || '',
+    gmailSubscription: process.env.GOOGLE_SUBSCRIPTION || '',
+    googleProjectId: process.env.GOOGLE_PROJECT_ID || '',
     llmModelsNames: [
         "gemini-pro",
         "gemini-pro-vision",
