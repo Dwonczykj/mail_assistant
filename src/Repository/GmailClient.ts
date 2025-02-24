@@ -13,6 +13,9 @@ import { container } from 'tsyringe';
 import { ILogger } from '../lib/logger/ILogger';
 import { FyxerAction } from '../data/entity/action';
 import { IFyxerActionRepository } from './IFyxerActionRepository';
+import Redis from 'ioredis';
+import { createRedisClient } from '../lib/redis/RedisProvider';
+import { redisConfig } from '../lib/redis/RedisConfig';
 
 export class GmailClient implements IEmailClient {
     private static instance: GmailClient | null = null;
@@ -22,6 +25,7 @@ export class GmailClient implements IEmailClient {
     private readonly emailAdaptor: GmailAdaptor;
     private readonly logger: ILogger;
     private readonly fyxerActionRepo: IFyxerActionRepository;
+    private readonly redisClient: Redis;
     private gmailLabels: gmail_v1.Schema$Label[] = [];
     private gmailLabelsExpireAt: Date | null = null;
     private labelCreationLock: Promise<void> = Promise.resolve();
@@ -34,27 +38,57 @@ export class GmailClient implements IEmailClient {
         return this.credentials?.expiry_date || null;
     }
 
-    private constructor() {
+    constructor(
+        redisClient: Redis = createRedisClient()
+    ) {
         this.authClient = null;
+        this.redisClient = redisClient;
         this.emailAdaptor = new GmailAdaptor();
         this.logger = container.resolve<ILogger>('ILogger');
         this.fyxerActionRepo = container.resolve<IFyxerActionRepository>('IFyxerActionRepository');
     }
 
-    static async getInstance({
+    static async getTemporaryInstance({
         sender,
     }: {
         sender?: string | undefined,
     }): Promise<GmailClient> {
         if (!GmailClient.instance) {
             GmailClient.instance = new GmailClient();
+            // Try to initialize with stored tokens
+            const [token, expiry] = await Promise.all([
+                GmailClient.instance.redisClient.get(redisConfig.keys.gmail.oauth.token),
+                GmailClient.instance.redisClient.get(redisConfig.keys.gmail.oauth.expiry)
+            ]);
+
+            if (token && expiry) {
+                await GmailClient.instance.initWithStoredCredentials({
+                    access_token: token,
+                    expiry_date: parseInt(expiry)
+                });
+            } else {
+                if (GmailClient.instance.credentials_access_token && GmailClient.instance.credentials_expiry_date && GmailClient.instance.credentials_expiry_date > Date.now()) {
+                    await Promise.all([
+                        GmailClient.instance.redisClient.set(redisConfig.keys.gmail.oauth.token, GmailClient.instance.credentials_access_token),
+                        GmailClient.instance.redisClient.set(redisConfig.keys.gmail.oauth.expiry, GmailClient.instance.credentials_expiry_date.toString())
+                    ]);
+                    GmailClient.instance.logger.debug("Access token cached successfully.");
+                }
+            }
         }
-        if (!GmailClient.instance.authClient) {
-            await GmailClient.instance!.initAuth().then((oauthClient) => {
-                GmailClient.instance!.initHttpEmailServerClient(oauthClient);
-            });
-        }
+        // if (!GmailClient.instance.authClient) {
+        //     await GmailClient.instance!.initAuth().then((oauthClient) => {
+        //         GmailClient.instance!.initHttpEmailServerClient(oauthClient);
+        //     });
+        // }
         return GmailClient.instance;
+    }
+
+    private async initWithStoredCredentials(credentials: Credentials): Promise<void> {
+        this.credentials = credentials;
+        this.authClient = new OAuth2Client();
+        this.authClient.setCredentials(credentials);
+        this.initHttpEmailServerClient(this.authClient);
     }
 
     /**

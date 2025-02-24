@@ -9,7 +9,7 @@ export class EmailServiceFactory {
     static async createEmailService(serviceName: string): Promise<IAmEmailService> {
         const logger = container.resolve<ILogger>("ILogger");
         if (serviceName === "gmail") {
-            const gmailClient = await GmailClient.getInstance({});
+            const gmailClient = await GmailClient.getTemporaryInstance({});
             return new EmailService(gmailClient, "gmail", logger);
         }
         throw new Error(`Unknown email service: ${serviceName}`);

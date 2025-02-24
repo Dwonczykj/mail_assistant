@@ -1,22 +1,34 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { GmailClient } from '../../Repository/GmailClient';
 import { config } from '../../Config/config';
+import Redis from 'ioredis';
+import { ILogger } from '../../lib/logger/ILogger';
+import { redisConfig } from '../../lib/redis/RedisConfig';
 
 @Injectable()
 export class AuthService {
-    // Added token caching properties
-    private accessToken: string | null = null;
-    private tokenExpiry: number | null = null;
-    private readonly logger = new Logger(AuthService.name);
+    constructor(
+        @Inject('REDIS_CLIENT')
+        private readonly redis: Redis,
+        @Inject('ILogger')
+        private readonly logger: ILogger // TODO: Fix this to use the ILogger that we already defined in our container.
+    ) { }
+
+    private readonly TOKEN_KEY = redisConfig.keys.gmail.oauth.token;
+    private readonly TOKEN_EXPIRY_KEY = redisConfig.keys.gmail.oauth.expiry;
 
     async getGoogleAuthUrl(): Promise<string> {
+        const [token, expiry] = await Promise.all([
+            this.redis.get(this.TOKEN_KEY),
+            this.redis.get(this.TOKEN_EXPIRY_KEY)
+        ]);
         // Check if a valid token is already cached
-        if (this.accessToken && this.tokenExpiry && Date.now() < this.tokenExpiry) {
-            this.logger.log("Valid access token already exists. Skipping new OAuth configuration.");
+        if (token && expiry && Date.now() < parseInt(expiry)) {
+            this.logger.debug("Valid access token already exists. Skipping new OAuth configuration.");
             return "ALREADY_AUTHENTICATED"; // Returning this special flag indicates authentication is complete.
         }
 
-        const gmailClient = await GmailClient.getInstance({ sender: "webapi" }); // TODO: BUG: This is not a singleton.
+        const gmailClient = await GmailClient.getTemporaryInstance({ sender: "webapi" });
         this.logger.debug("No valid token found. Configuring OAuth...");
         await gmailClient.configureOAuth({
             clientId: config.googleClientId,
@@ -29,16 +41,18 @@ export class AuthService {
     }
 
     async handleGoogleCallback(code: string, sender: string): Promise<void> {
-        const gmailClient = await GmailClient.getInstance({ sender: "webapi" }); // NOTE: We only use webapi callbacks now from requests to Authenticate Google Auth that initiated from the web server.
+        const gmailClient = await GmailClient.getTemporaryInstance({ sender: "webapi" }); // NOTE: We only use webapi callbacks now from requests to Authenticate Google Auth that initiated from the web server.
         this.logger.debug(`Handling OAuth callback with code: ${code}`);
         // Assume handleOAuthCallback returns an object { access_token, expires_in: number }
-        const tokenInfo = await gmailClient.handleOAuthCallback(code);
-        if (gmailClient.credentials_access_token && gmailClient.credentials_expiry_date) {
-            this.accessToken = gmailClient.credentials_access_token;
-            this.tokenExpiry = gmailClient.credentials_expiry_date;
-            this.logger.log("Access token cached successfully.");
-        } else {
-            this.logger.error("Failed to retrieve access token during OAuth callback.");
-        }
+        await gmailClient.handleOAuthCallback(code);
+        // if (gmailClient.credentials_access_token && gmailClient.credentials_expiry_date && gmailClient.credentials_expiry_date > Date.now()) {
+        //     await Promise.all([
+        //         this.redis.set(this.TOKEN_KEY, gmailClient.credentials_access_token),
+        //         this.redis.set(this.TOKEN_EXPIRY_KEY, gmailClient.credentials_expiry_date.toString())
+        //     ]);
+        //     this.logger.debug("Access token cached successfully.");
+        // } else {
+        //     this.logger.error("Failed to retrieve access token during OAuth callback.");
+        // }
     }
 } 

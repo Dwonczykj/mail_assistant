@@ -22,11 +22,7 @@ export class AuthController {
         @Query('code') code: string,
         @Res() res: Response,
     ) {
-        // TODO: Check the state and get the sender from the state.
         await this.authService.handleGoogleCallback(code, "daemon");
-        // Publish the OAuth code to Redis so the daemon can receive it.
-        const redisPublisher = new Redis();
-        redisPublisher.publish('googleAuthCode', code);
         res.send('Authentication successful! You can close this window.');
     }
 } 

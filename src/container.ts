@@ -9,6 +9,8 @@ import { IMockEmailRepository } from './Repository/IMockEmailRepository';
 import { IFyxerActionRepository } from './Repository/IFyxerActionRepository';
 import { FyxerActionRepository } from './Repository/FyxerActionRepository';
 import { AppDataSource } from './data/data-source';
+import { createRedisClient } from './lib/redis/RedisProvider';
+import Redis from 'ioredis';
 
 // Initialize TypeORM connection
 AppDataSource.initialize()
@@ -21,7 +23,10 @@ AppDataSource.initialize()
 container.register<ILogger>('ILogger', { useClass: WinstonLogger });
 
 // Register CategoriserFactory as the ICategoriser implementation for dependency injection.
-container.register<ICategoriser>('ICategoriser', {  useFactory: () => CategoriserFactory.createCategoriserOpenAI() });
+container.register<ICategoriser>('ICategoriser', { useFactory: () => CategoriserFactory.createCategoriserOpenAI() });
+
+// Register Redis client for dependency injection.
+container.register<Redis>('REDIS_CLIENT', { useFactory: createRedisClient });
 
 // Register MockEmailRepository as the IMockEmailRepository implementation for dependency injection.
 container.register<IMockEmailRepository>('IMockEmailRepository', { useClass: MockEmailRepository });

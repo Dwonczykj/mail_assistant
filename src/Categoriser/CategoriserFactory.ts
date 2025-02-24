@@ -94,7 +94,7 @@ export class CategoriserFactory {
     static createCategoriserOllama(): ICategoriser {
 
         const llm = new Ollama({
-            baseUrl: "http://localhost:11434", // TODO: Is this correct?
+            baseUrl: "http://localhost:11434",
             model: "mistral:latest",
             temperature: 0,
         });
