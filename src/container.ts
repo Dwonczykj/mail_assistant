@@ -12,7 +12,7 @@ import { AppDataSource } from './data/data-source';
 import { createRedisClient } from './lib/redis/RedisProvider';
 import Redis from 'ioredis';
 import { IGmailAuth } from './lib/utils/IGmailAuth';
-import { GmailAuthForDaemon } from './lib/utils/gmailAuth';
+import { GoogleAuthForDaemon } from './lib/utils/gmailAuth';
 
 // Initialize TypeORM connection
 AppDataSource.initialize()
@@ -31,7 +31,7 @@ container.register<ICategoriser>('ICategoriser', { useFactory: () => Categoriser
 container.register<Redis>('REDIS_CLIENT', { useFactory: createRedisClient });
 
 // Register GmailAuthForDaemon as the IGmailAuth implementation for dependency injection.
-container.register<IGmailAuth>('IGmailAuth', { useClass: GmailAuthForDaemon });
+container.register<IGmailAuth>('IGmailAuth', { useClass: GoogleAuthForDaemon });
 
 // Register MockEmailRepository as the IMockEmailRepository implementation for dependency injection.
 container.register<IMockEmailRepository>('IMockEmailRepository', { useClass: MockEmailRepository });

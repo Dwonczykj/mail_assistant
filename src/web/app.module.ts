@@ -5,7 +5,7 @@ import { GmailInitService } from './initialization/gmail-init.service';
 import { createRedisClient } from '../lib/redis/RedisProvider';
 import { WinstonLogger } from '../lib/logger/WinstonLogger';
 import { GmailWebhookController } from './controllers/gmail-webhook.controller';
-import { GmailAuthForWeb } from '../lib/utils/gmailAuth';
+import { GoogleAuthForWeb } from '../lib/utils/gmailAuth';
 
 @Module({
     imports: [
@@ -28,7 +28,7 @@ import { GmailAuthForWeb } from '../lib/utils/gmailAuth';
         },
         {
             provide: 'IGoogleAuth',
-            useClass: GmailAuthForWeb
+            useClass: GoogleAuthForWeb
         }
     ],
     controllers: [

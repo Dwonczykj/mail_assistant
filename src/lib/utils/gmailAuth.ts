@@ -17,7 +17,7 @@ import { inject, injectable } from 'tsyringe';
 
 
 
-abstract class GmailAuth implements IGmailAuth {
+abstract class GoogleAuth implements IGmailAuth {
     private authClient: OAuth2Client | null = null;
     constructor(
         @inject('REDIS_CLIENT') private readonly redis: Redis,
@@ -28,6 +28,8 @@ abstract class GmailAuth implements IGmailAuth {
         token: string;
         expiry: string;
     };
+
+    abstract type: 'daemon' | 'web';
 
 
     async initializeGoogleClient(): Promise<OAuth2Client> {
@@ -45,7 +47,7 @@ abstract class GmailAuth implements IGmailAuth {
             return clientFromRedis;
         }
         // Second check for file token and expiry and return
-        const clientFromFile = await this.loadSavedCredentialsSessionTokenIfExist({ tokenPath: config.daemonTokenPath });
+        const clientFromFile = await this.loadSavedCredentialsSessionTokenIfExist({ tokenPath: config.tokenPath[this.type] });
         if (clientFromFile) {
             return clientFromFile;
         }
@@ -60,7 +62,7 @@ abstract class GmailAuth implements IGmailAuth {
         } else {
             client = await authenticate({
                 scopes: config.google.scopes,
-                keyfilePath: config.daemonCredentialsPath,
+                keyfilePath: config.credentialsPath[this.type],
             });
         }
         if (client.credentials) {
@@ -151,7 +153,7 @@ abstract class GmailAuth implements IGmailAuth {
      */
     private async saveSessionToken(client: OAuth2Client) {
         // Save to file
-        const content = await fs.promises.readFile(config.daemonCredentialsPath, 'utf-8');
+        const content = await fs.promises.readFile(config.credentialsPath[this.type], 'utf-8');
         const keys = JSON.parse(content);
         const key = keys.installed || keys.web;
         const payload = JSON.stringify({
@@ -160,7 +162,7 @@ abstract class GmailAuth implements IGmailAuth {
             client_secret: key.client_secret,
             refresh_token: client.credentials.refresh_token,
         });
-        await fs.promises.writeFile(config.daemonTokenPath, payload);
+        await fs.promises.writeFile(config.tokenPath[this.type], payload);
 
         // Save to redis
         const expiryDate = client.credentials.expiry_date;
@@ -175,7 +177,7 @@ abstract class GmailAuth implements IGmailAuth {
 }
 
 @injectable()
-export class GmailAuthForDaemon extends GmailAuth implements IGmailAuth {
+export class GoogleAuthForDaemon extends GoogleAuth implements IGmailAuth {
     constructor(
         @inject('REDIS_CLIENT') redis: Redis,
         @inject('ILogger') logger: ILogger
@@ -187,9 +189,10 @@ export class GmailAuthForDaemon extends GmailAuth implements IGmailAuth {
         token: redisConfig.keys.gmail.daemon.oauth.token,
         expiry: redisConfig.keys.gmail.daemon.oauth.expiry
     }
+    type: 'daemon' = 'daemon';
 }
 @injectable()
-export class GmailAuthForWeb extends GmailAuth implements IGmailAuth {
+export class GoogleAuthForWeb extends GoogleAuth implements IGmailAuth {
     constructor(
         @inject('REDIS_CLIENT') redis: Redis,
         @inject('ILogger') logger: ILogger
@@ -201,6 +204,7 @@ export class GmailAuthForWeb extends GmailAuth implements IGmailAuth {
         token: redisConfig.keys.gmail.web.oauth.token,
         expiry: redisConfig.keys.gmail.web.oauth.expiry
     }
+    type: 'web' = 'web';
 }
 
 /**
