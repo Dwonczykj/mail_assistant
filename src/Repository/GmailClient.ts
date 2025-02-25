@@ -199,13 +199,13 @@ export class GmailClient implements IEmailClient, IHaveGoogleClient<gmail_v1.Gma
         lastNHours?: number
     }): Promise<Email[]> {
         try {
-            //BUG: q is not working. Check the docs.
-            const query = `after:${lastNHours ? new Date(Date.now() - lastNHours * 60 * 60 * 1000).toISOString() : ''}`;
+            //BUG: q is not working. Check the docs. Also need to confirm webhook is working in webapi for pub/sub
+            const query = `after:${lastNHours ? Math.floor(new Date(Date.now() - lastNHours * 60 * 60 * 1000).getTime() / 1000) : ''}`;
             this.logger.info(`Fetching last ${count} emails from ${query}`);
             const listResponse = await this.httpGoogleClient!.users.messages.list({
                 userId: 'me',
                 maxResults: count,
-                // q: query
+                q: query
             });
 
             const messagesList = listResponse.data.messages || [];
