@@ -9,42 +9,47 @@ export class WinstonLogger implements ILogger {
 
     constructor() {
         this.logger = createLogger({
-            level: 'info',
+            level: 'debug',
             format: format.combine(
                 format.timestamp(),
-                format.json()
+                format.errors({ stack: true }),
+                format.printf(({ timestamp, level, message, meta }) => {
+                    const metaStr = meta ? ` ${JSON.stringify(meta)}` : '';
+                    return `${timestamp} [${level}]: ${message}${metaStr}`;
+                })
             ),
             transports: [
-                new transports.Console(),
-                new transports.Console(
-                    {
-                        debugStdout: true,
-                    }
-                ),
+                new transports.Console({
+                    format: format.combine(
+                        format.colorize(),
+                        format.simple()
+                    )
+                }),
                 new DailyRotateFile({
                     filename: 'logs/application-%DATE%.log',
                     datePattern: 'YYYY-MM-DD',
                     zippedArchive: true,
                     maxSize: '20m',
-                    maxFiles: '14d'
+                    maxFiles: '14d',
+                    format: format.json()
                 })
             ]
         });
     }
 
     debug(message: any, meta?: any): void {
-        this.logger.debug(message?.toString() || "", meta);
+        this.logger.debug(message?.toString() || "", { meta });
     }
 
     info(message: any, meta?: any): void {
-        this.logger.info(message?.toString() || "", meta);
+        this.logger.info(message?.toString() || "", { meta });
     }
 
     warn(message: any, meta?: any): void {
-        this.logger.warn(message?.toString() || "", meta);
+        this.logger.warn(message?.toString() || "", { meta });
     }
 
     error(message: any, meta?: any): void {
-        this.logger.error(message?.toString() || "", meta);
+        this.logger.error(message?.toString() || "", { meta });
     }
 } 
