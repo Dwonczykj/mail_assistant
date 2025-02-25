@@ -9,7 +9,7 @@ import { EmailCategorisation } from "./EmailCategorisation";
 import { StructuredOutputParser } from "langchain/output_parsers";
 import { PromptTemplate } from "@langchain/core/prompts";
 import { z } from "zod";
-import { injectable, inject } from "tsyringe";
+import { Injectable, Inject } from "@nestjs/common";
 import { ILogger } from "../lib/logger/ILogger";
 
 
@@ -23,7 +23,7 @@ export interface IEmailData {
     timestamp: string;
 }
 
-@injectable()
+@Injectable()
 export class LLMCategoriser implements ICategoriser {
     private static labels = [
         "Primary",
@@ -36,7 +36,7 @@ export class LLMCategoriser implements ICategoriser {
         "Other"
     ];
 
-    constructor(private llm: BaseChatModel | LLM, @inject("ILogger") private logger: ILogger) {
+    constructor(private llm: BaseChatModel | LLM, @Inject("ILogger") private logger: ILogger) {
         // Existing constructor logic
     }
 

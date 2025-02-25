@@ -14,8 +14,8 @@ export class GmailInitService implements OnModuleInit {
         private readonly redis: Redis,
         @Inject('ILogger')
         private readonly logger: ILogger,
-        @Inject('IGoogleAuth')
-        private readonly googleAuth: IGoogleAuth
+        @Inject('GmailClient')
+        private readonly gmailClient: GmailClient,
     ) { }
 
     async onModuleInit() {
@@ -24,9 +24,8 @@ export class GmailInitService implements OnModuleInit {
 
     async initializeGoogleClient(): Promise<GmailClient> {
         try {
-            const gmailClient = await GmailClient.getTemporaryInstance({ authProvider: this.googleAuth });
             this.logger.info('Gmail client initialized during bootstrap');
-            return gmailClient;
+            return this.gmailClient;
         } catch (error) {
             this.logger.error('Failed to initialize Gmail client during bootstrap:', { error });
             throw error;

@@ -1,21 +1,20 @@
 import { google } from 'googleapis';
 import { Credentials, OAuth2Client } from 'google-auth-library';
 import Redis from 'ioredis';
-import { container } from 'tsyringe';
 import { config } from '../../Config/config';
 import { ILogger } from '../logger/ILogger';
 import { IGoogleAuth } from './IGoogleAuth';
 import { redisConfig } from '../redis/RedisConfig';
-import { inject, injectable } from 'tsyringe';
+import { Inject, Injectable } from '@nestjs/common';
 
 
 
-
+@Injectable()
 abstract class GoogleAuth implements IGoogleAuth {
     private oAuth2Client: OAuth2Client | null = null;
     constructor(
-        @inject('REDIS_CLIENT') private readonly redis: Redis,
-        @inject('ILogger') private readonly logger: ILogger
+        @Inject('REDIS_CLIENT') private readonly redis: Redis,
+        @Inject('ILogger') private readonly logger: ILogger
     ) { }
 
     abstract oauth: {
@@ -34,7 +33,8 @@ abstract class GoogleAuth implements IGoogleAuth {
 
     private async initializeGoogleClientInternal({ useFileCredentials }: { useFileCredentials?: boolean } = { useFileCredentials: true }): Promise<OAuth2Client> {
         let client: OAuth2Client;
-        if (useFileCredentials) {
+        // Change from useFileCredentials to false to use the redis cache instead of the file credentials in all cases to avoid file system access which is not available in the web context.
+        if (false) {
             this.logger.debug("Initializing Google client with file credentials");
             const { authenticate } = await import('@google-cloud/local-auth');
             client = await authenticate({
@@ -131,7 +131,7 @@ abstract class GoogleAuth implements IGoogleAuth {
      * Loads the saved credentials from redis.
      * @returns The saved credentials or null if none found.
      */
-    private async loadSavedCredentialsFromRedis({ client }: { client: OAuth2Client }): Promise<OAuth2Client | null> {
+    private async loadSavedCredentialsFromRedis({ client }: { client?: OAuth2Client }): Promise<OAuth2Client | null> {
         const [accessToken, refreshToken, expiry] = await Promise.all([
             this.redis.get(redisConfig.keys.gmail.web.oauth.token),
             this.redis.get(redisConfig.keys.gmail.web.oauth.refreshToken),
@@ -148,6 +148,10 @@ abstract class GoogleAuth implements IGoogleAuth {
             return client;
         }
         return null;
+    }
+
+    public async redisCacheAuthValid(): Promise<boolean> {
+        return !!(await this.loadSavedCredentialsFromRedis({}));
     }
 
     /**
@@ -221,11 +225,11 @@ abstract class GoogleAuth implements IGoogleAuth {
     }
 }
 
-@injectable()
+@Injectable()
 export class GoogleAuthForDaemon extends GoogleAuth implements IGoogleAuth {
     constructor(
-        @inject('REDIS_CLIENT') redis: Redis,
-        @inject('ILogger') logger: ILogger
+        @Inject('REDIS_CLIENT') redis: Redis,
+        @Inject('ILogger') logger: ILogger
     ) {
         super(redis, logger);
     }
@@ -237,11 +241,11 @@ export class GoogleAuthForDaemon extends GoogleAuth implements IGoogleAuth {
     }
     type: 'daemon' = 'daemon';
 }
-@injectable()
+@Injectable()
 export class GoogleAuthForWeb extends GoogleAuth implements IGoogleAuth {
     constructor(
-        @inject('REDIS_CLIENT') redis: Redis,
-        @inject('ILogger') logger: ILogger
+        @Inject('REDIS_CLIENT') redis: Redis,
+        @Inject('ILogger') logger: ILogger
     ) {
         super(redis, logger);
     }
@@ -260,8 +264,7 @@ export class GoogleAuthForWeb extends GoogleAuth implements IGoogleAuth {
  * Lists documents from the user's Google Drive.
  * @param auth The authenticated OAuth2 client.
  */
-async function listDocuments(auth: OAuth2Client) {
-    const logger: ILogger = container.resolve<ILogger>('ILogger');
+async function listDocuments(auth: OAuth2Client, logger: ILogger) {
     const drive = google.drive({ version: 'v3', auth });
     const res = await drive.files.list({
         q: "mimeType='application/vnd.google-apps.document'",

@@ -1,47 +1,35 @@
 import { IMailListener } from "./IMailListener";
 import { GmailClient } from "../Repository/GmailClient";
-import { container } from "../container";
-import { Injectable, Inject, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Inject, OnModuleInit, OnModuleDestroy, OnApplicationShutdown, OnApplicationBootstrap } from '@nestjs/common';
 import { ILogger } from "../lib/logger/ILogger";
-import { BadClientError } from "./errors/EmailServiceErrors";
-import { IGoogleAuth } from "../lib/utils/IGoogleAuth";
 
 @Injectable()
-export class GmailListenerService implements IMailListener, OnModuleInit, OnModuleDestroy {
+export class GmailListenerService implements IMailListener, OnModuleInit, OnModuleDestroy, OnApplicationShutdown, OnApplicationBootstrap {
 
-    constructor(private readonly emailClient: GmailClient, @Inject("ILogger") private readonly logger: ILogger) { }
+    constructor(@Inject(GmailClient) private readonly emailClient: GmailClient, @Inject("ILogger") private readonly logger: ILogger) { }
 
-    async onModuleInit() {
-        // Call the method that sets up the listener
+    async onApplicationBootstrap() {
         await this.start();
     }
 
-    async onModuleDestroy() {
+    async onApplicationShutdown() {
         await this.stop();
     }
 
-    async start(): Promise<void> {
-        if (this.emailClient instanceof GmailClient) {
-            // Get fresh auth client
-            const authProvider = container.resolve<IGoogleAuth>('IGoogleAuth');
-            const authenticatedClient = await GmailClient.getTemporaryInstance({
-                authProvider
-            });
+    async onModuleInit() {
+        // await this.start();
+    }
 
-            await authenticatedClient.listenForIncomingEmails();
-        } else {
-            this.logger.error("Email client is not a GmailClient");
-            throw new BadClientError("Email client is not a GmailClient");
-        }
+    async onModuleDestroy() {
+        // await this.stop();
+    }
+
+    async start(): Promise<void> {
+        await this.emailClient.listenForIncomingEmails();
     }
 
     async stop(): Promise<void> { // TODO: Ensure this method is called when the app shuts down or when the service is stopped using a with block. like pythonic __enter__ and __exit__ methods. What is this called in NestJS?
-        if (this.emailClient instanceof GmailClient) {
-            await this.emailClient.killIncomingEmailListener();
-        } else {
-            this.logger.error("Email client is not a GmailClient");
-            throw new BadClientError("Email client is not a GmailClient");
-        }
+        await this.emailClient.killIncomingEmailListener();
     }
 
     // TODO: Challenge task, draw out a system diagram for this project (10 minutes and explain why you have included each component and what you would do if you had more time)

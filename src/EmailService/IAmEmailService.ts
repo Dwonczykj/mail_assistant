@@ -1,8 +1,11 @@
 import { Email } from "../models/Email";
+import { IMailListener } from "./IMailListener";
 
 export interface IAmEmailService {
-    name: string;
-    fetchLastEmails(count: number): Promise<Email[]>;
+    readonly name: string;
+    readonly listenerService: IMailListener;
+
+    fetchLastEmails({ count, lastNHours }: { count: number, lastNHours?: number }): Promise<Email[]>;
     categoriseEmail(email: Email): Promise<Email>;
     // // Draft Email
     // draftEmail(email: Email): Promise<Email>;

@@ -1,21 +1,19 @@
-import { inject, injectable } from "tsyringe";
-import { container } from "../container";
 import { ILogger } from "../lib/logger/ILogger";
 import { Email } from "../models/Email";
 import { IMockEmailRepository } from "./IMockEmailRepository";
+import { IAmEmailService } from "../EmailService/IAmEmailService";
+import { Injectable, Inject } from "@nestjs/common";
 
-@injectable()
+@Injectable()
 export class MockEmailRepository implements IMockEmailRepository {
 
     // private readonly logger: ILogger;
 
     constructor(
-        @inject('ILogger') private readonly logger: ILogger
-    ) {
-        // this.logger = container.resolve<ILogger>('ILogger');
-    }
+        @Inject('ILogger') private readonly logger: ILogger
+    ) { }
 
-    async saveEmails(emails: Email[]): Promise<void> {
+    async saveEmails(emails: { email: Email, service?: IAmEmailService }[]): Promise<void> {
         const fss = require('fs');
         const fs = require('fs').promises;
         const path = require('path');
@@ -36,8 +34,8 @@ export class MockEmailRepository implements IMockEmailRepository {
             this.logger.error('Error reading mock emails file:', { error: error });
         }
 
-        // Append new emails to the existing array
-        existingEmails.push(...emails);
+        // Append new emails with service names to the existing array
+        existingEmails.push(...emails.map(emailServiceTuple => ({ email: emailServiceTuple.email, service: emailServiceTuple.service?.name })));
 
         // Write the updated array back to the file
         await fs.writeFile(mockEmailsFilePath, JSON.stringify(existingEmails, null, 2));

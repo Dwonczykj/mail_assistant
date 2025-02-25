@@ -1,14 +1,16 @@
 import { Repository } from 'typeorm';
 import { ProcessedObject, ObjectType } from '../data/entity/ProcessedObject';
-import { injectable } from 'tsyringe';
-import { AppDataSource } from '../data/data-source';
+import { Inject, Injectable } from '@nestjs/common';
+import { DatabaseInitializerService } from '../data/data-source';
 
-@injectable()
+@Injectable()
 export class ProcessedObjectRepository {
     private repository: Repository<ProcessedObject>;
 
-    constructor() {
-        this.repository = AppDataSource.getRepository(ProcessedObject);
+    constructor(
+        @Inject(DatabaseInitializerService) private readonly databaseInitializer: DatabaseInitializerService
+    ) {
+        this.repository = this.databaseInitializer.dataSource.getRepository(ProcessedObject);
     }
 
     async save(object: Partial<ProcessedObject>): Promise<ProcessedObject> {

@@ -6,6 +6,7 @@ export interface IGoogleAuth {
         code: string
     }): Promise<void>;
     getAuthUrl(): string;
+    redisCacheAuthValid(): Promise<boolean>;
     getCredentials(): Promise<Credentials | null>;
     refreshToken(): Promise<void>;
 }

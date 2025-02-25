@@ -1,9 +1,9 @@
 import { createLogger, format, transports, Logger } from 'winston';
 import DailyRotateFile from 'winston-daily-rotate-file';
 import { ILogger } from './ILogger';
-import { injectable } from 'tsyringe';
+import { Injectable } from '@nestjs/common';
 
-@injectable()
+@Injectable()
 export class WinstonLogger implements ILogger {
     private logger: Logger;
 

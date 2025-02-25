@@ -1,7 +1,6 @@
 import { MockEmailRepository } from '../../src/Repository/MockEmailRepository';
 import { Email } from '../../src/models/Email';
 import { ILogger } from '../../src/lib/logger/ILogger';
-import { container } from '../../src/container';
 import { generateMockEmails } from '../mocks/mockEmail';
 
 // Mock the fs modules

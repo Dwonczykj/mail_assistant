@@ -2,33 +2,28 @@ import { google } from 'googleapis';
 import type { gmail_v1 } from 'googleapis';
 import { OAuth2Client, Credentials } from 'google-auth-library';
 import { config } from '../Config/config';
-import { CategoriserFactory } from "../Categoriser/CategoriserFactory";
 import { GmailAdaptor } from '../models/GmailAdaptor';
 import { IEmailClient } from './IEmailClient';
 import { ILabel } from '../models/Label';
 import { Email } from '../models/Email';
-import { container } from 'tsyringe';
-// import { injectable, inject } from 'tsyringe';
 import { ILogger } from '../lib/logger/ILogger';
 import { FyxerAction } from '../data/entity/action';
 import { IFyxerActionRepository } from './IFyxerActionRepository';
-import Redis from 'ioredis';
-import { createRedisClient } from '../lib/redis/RedisProvider';
-import { redisConfig } from '../lib/redis/RedisConfig';
 import { pubSubConfig } from '../Config/pubSubConfig';
 import { IGoogleAuth } from '../lib/utils/IGoogleAuth';
+import { Injectable, Inject } from '@nestjs/common';
 
+@Injectable()
 export class GmailClient implements IEmailClient {
     private static instance: GmailClient | null = null;
     private authClient: OAuth2Client | null = null;
     private httpEmailServerClient: gmail_v1.Gmail | null = null;
     private credentials: Credentials | null = null;
     private readonly emailAdaptor: GmailAdaptor;
-    private readonly logger: ILogger;
-    private readonly fyxerActionRepo: IFyxerActionRepository;
     private gmailLabels: gmail_v1.Schema$Label[] = [];
     private gmailLabelsExpireAt: Date | null = null;
     private labelCreationLock: Promise<void> = Promise.resolve();
+    public readonly name: string = "gmail";
 
     public get credentials_access_token(): string | null {
         return this.credentials?.access_token || null;
@@ -38,22 +33,18 @@ export class GmailClient implements IEmailClient {
         return this.credentials?.expiry_date || null;
     }
 
-    constructor() {
+    constructor(
+        @Inject('ILogger') private readonly logger: ILogger,
+        @Inject('IFyxerActionRepository') private readonly fyxerActionRepo: IFyxerActionRepository,
+        @Inject('IGoogleAuth') private readonly authProvider: IGoogleAuth,
+    ) {
         this.authClient = null;
         this.emailAdaptor = new GmailAdaptor();
-        this.logger = container.resolve<ILogger>('ILogger');
-        this.fyxerActionRepo = container.resolve<IFyxerActionRepository>('IFyxerActionRepository');
-    }
-
-    static async getTemporaryInstance({
-        authProvider,
-    }: {
-        authProvider: IGoogleAuth,
-    }): Promise<GmailClient> {
-        GmailClient.instance ??= new GmailClient();
-        GmailClient.instance.authClient = await authProvider.initializeGoogleClient();
-        GmailClient.instance.httpEmailServerClient = google.gmail({ version: 'v1', auth: GmailClient.instance.authClient });
-        return GmailClient.instance;
+        const instance = this;
+        this.authProvider.initializeGoogleClient().then((authClient) => {
+            instance.authClient = authClient;
+            instance.httpEmailServerClient = google.gmail({ version: 'v1', auth: instance.authClient });
+        });
     }
 
     private async withLock<T>(operation: () => Promise<T>): Promise<T> {
@@ -105,10 +96,9 @@ export class GmailClient implements IEmailClient {
             } catch (error) {
                 // Token might be expired, try to refresh
                 if (error instanceof Error && error.message.includes('No access token')) {
-                    const authProvider = container.resolve<IGoogleAuth>('IGoogleAuth');
-                    await authProvider.refreshToken();
+                    await this.authProvider.refreshToken();
                     // Reinitialize client with new token
-                    this.authClient = await authProvider.initializeGoogleClient();
+                    this.authClient = await this.authProvider.initializeGoogleClient();
                     this.httpEmailServerClient = google.gmail({ version: 'v1', auth: this.authClient });
                 } else {
                     throw error;
@@ -150,10 +140,9 @@ export class GmailClient implements IEmailClient {
             // } catch (error) {
             //     // Token might be expired, try to refresh
             //     if (error instanceof Error && error.message.includes('No access token')) {
-            //         const authProvider = container.resolve<IGoogleAuth>('IGoogleAuth');
-            //         await authProvider.refreshToken();
+            //         await this.authProvider.refreshToken();
             //         // Reinitialize client with new token
-            //         this.authClient = await authProvider.initializeGoogleClient();
+            //         this.authClient = await this.authProvider.initializeGoogleClient();
             //         this.httpEmailServerClient = google.gmail({ version: 'v1', auth: this.authClient });
             //     } else {
             //         throw error;
@@ -171,13 +160,18 @@ export class GmailClient implements IEmailClient {
         }
     }
 
-    public async fetchLastEmails(
-        count: number
-    ): Promise<Email[]> {
+    public async fetchLastEmails({
+        count,
+        lastNHours = 24
+    }: {
+        count: number,
+        lastNHours?: number
+    }): Promise<Email[]> {
         try {
             const listResponse = await this.httpEmailServerClient!.users.messages.list({
                 userId: 'me',
                 maxResults: count,
+                q: `after:${lastNHours ? new Date(Date.now() - lastNHours * 60 * 60 * 1000).toISOString() : ''}`
             });
 
             const messagesList = listResponse.data.messages || [];

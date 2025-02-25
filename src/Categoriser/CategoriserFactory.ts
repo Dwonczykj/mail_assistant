@@ -7,25 +7,25 @@ import { ICategoriser } from "./ICategoriser";
 import { LLMCategoriser } from "./LLMCategoriser";
 import { config } from "../Config/config";
 import { ILogger } from "../lib/logger/ILogger";
-import { container } from "../container";
+import { Inject } from "@nestjs/common";
 
 export class CategoriserFactory {
-    private static logger = () => container.resolve<ILogger>("ILogger");
+    constructor(@Inject("ILogger") private readonly logger: ILogger) { }
     /**
      * Creates an instance of an ICategoriser using the ChatOpenAI model.
      * @returns An instance of ICategoriser.
      */
-    static createCategoriserOpenAI(): ICategoriser {
+    createCategoriserOpenAI(): ICategoriser {
 
         const llm = new ChatOpenAI({
             model: "gpt-4o",
             temperature: 0,
             apiKey: config.apiKeys.openai,
         });
-        return new LLMCategoriser(llm, this.logger());
+        return new LLMCategoriser(llm, this.logger);
     }
 
-    static createCategoriserOpenRouter({
+    createCategoriserOpenRouter({
         model = "gpt-4o",
         temperature = 0,
     }: {
@@ -41,10 +41,10 @@ export class CategoriserFactory {
                 baseURL: config.openrouter.apiUrl,
             }
         });
-        return new LLMCategoriser(llm, this.logger());
+        return new LLMCategoriser(llm, this.logger);
     }
 
-    static createCategoriserGemini({
+    createCategoriserGemini({
         model = "gemini-1.5-flash",
         temperature = 0,
     }: {
@@ -57,10 +57,10 @@ export class CategoriserFactory {
             temperature: temperature,
             apiKey: config.apiKeys.gemini,
         });
-        return new LLMCategoriser(llm, this.logger());
+        return new LLMCategoriser(llm, this.logger);
 
     }
-    static createCategoriserVertexAI({
+    createCategoriserVertexAI({
         model = "gemini-1.5-flash",
         temperature = 0,
     }: {
@@ -72,10 +72,10 @@ export class CategoriserFactory {
             model: model,
             temperature: temperature,
         });
-        return new LLMCategoriser(llm, this.logger());
+        return new LLMCategoriser(llm, this.logger);
     }
 
-    static createCategoriserAnthropic({
+    createCategoriserAnthropic({
         model = "claude-3-5-sonnet",
         temperature = 0,
     }: {
@@ -88,17 +88,17 @@ export class CategoriserFactory {
             temperature: temperature,
             apiKey: config.apiKeys.anthropic,
         });
-        return new LLMCategoriser(llm, this.logger());
+        return new LLMCategoriser(llm, this.logger);
     }
 
-    static createCategoriserOllama(): ICategoriser {
+    createCategoriserOllama(): ICategoriser {
 
         const llm = new Ollama({
             baseUrl: "http://localhost:11434",
             model: "mistral:latest",
             temperature: 0,
         });
-        return new LLMCategoriser(llm, this.logger());
+        return new LLMCategoriser(llm, this.logger);
     }
 }
 

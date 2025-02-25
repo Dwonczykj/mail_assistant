@@ -1,13 +1,14 @@
 import { FyxerAction } from "../data/entity/action";
 import { BaseRepository } from "./BaseRepository";
 import { IFyxerActionRepository } from "./IFyxerActionRepository";
-import { injectable } from "tsyringe";
+import { Inject, Injectable } from "@nestjs/common";
 import { ValidationError, NotFoundError, InvalidArgumentError } from "./errors/RepositoryErrors";
+import { DatabaseInitializerService } from "../data/data-source";
 
-@injectable()
+@Injectable()
 export class FyxerActionRepository extends BaseRepository<FyxerAction> implements IFyxerActionRepository {
-    constructor() {
-        super(FyxerAction);
+    constructor(@Inject(DatabaseInitializerService) databaseInitializer: DatabaseInitializerService) {
+        super(FyxerAction, databaseInitializer);
     }
 
     // Add custom methods specific to FyxerAction here

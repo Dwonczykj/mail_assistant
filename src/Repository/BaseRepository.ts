@@ -1,11 +1,13 @@
 import { Repository, FindOptionsWhere, DeepPartial, ObjectLiteral } from "typeorm";
-import { AppDataSource } from "../data/data-source";
+import { DatabaseInitializerService } from "../data/data-source";
+import { Inject, Injectable } from "@nestjs/common";
 
+@Injectable()
 export abstract class BaseRepository<T extends ObjectLiteral & { id: string | number }> {
     protected repository: Repository<T>;
 
-    constructor(private entity: new () => T) {
-        this.repository = AppDataSource.getRepository(entity);
+    constructor(private entity: new () => T, @Inject(DatabaseInitializerService) private readonly databaseInitializer: DatabaseInitializerService) {
+        this.repository = this.databaseInitializer.dataSource.getRepository(entity);
     }
 
     async create(data: DeepPartial<T>): Promise<T> {

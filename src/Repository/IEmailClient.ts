@@ -6,7 +6,7 @@ import { ILabel } from "../models/Label";
  * @param T - The type of the email object.
  */
 export interface IEmailClient {
-
+    readonly name: string;
     
 
     /**
@@ -19,9 +19,13 @@ export interface IEmailClient {
      * @param count - Number of emails to fetch.
      * @returns Array of Gmail message objects.
      */
-    fetchLastEmails(
-        count: number
-    ): Promise<Email[]>;
+    fetchLastEmails({
+        count,
+        lastNHours
+    }: {
+        count: number,
+        lastNHours?: number
+    }): Promise<Email[]>;
 
     /**
      * Categorises an email if not already labelled.

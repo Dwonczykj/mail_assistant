@@ -1,29 +1,31 @@
-import { Controller, Post, Body, Logger } from '@nestjs/common';
+import { Controller, Post, Body, Logger, Injectable, Inject } from '@nestjs/common';
 import { EmailServiceManager } from '../../EmailService/EmailServiceManager';
 import { ProcessedObjectRepository } from '../../Repository/ProcessedObjectRepository';
-import { container } from '../../container';
+import { ILogger } from '../../lib/logger/ILogger';
 
 @Controller('webhooks/gmail')
+@Injectable()
 export class GmailWebhookController {
-    private readonly logger = new Logger(GmailWebhookController.name);
-    private readonly processedObjectRepo: ProcessedObjectRepository;
+    // private readonly logger = new Logger(GmailWebhookController.name);
 
-    constructor() {
-        this.processedObjectRepo = container.resolve(ProcessedObjectRepository);
-    }
+    constructor(
+        @Inject('ProcessedObjectRepository') private readonly processedObjectRepo: ProcessedObjectRepository,
+        @Inject('EmailServiceManager') private readonly emailServiceManager: EmailServiceManager,
+        @Inject('ILogger') private readonly logger: ILogger,
+    ) { }
 
     @Post()
     async handlePushNotification(@Body() payload: any): Promise<void> {
-        this.logger.log('Received Gmail push notification');
-
-        const emailServiceManager = EmailServiceManager.getInstance();
-        const gmailService = await emailServiceManager.getEmailService('gmail');
-
+        this.logger.info('Received Gmail push notification');
         // Fetch and process the new email 
         // TODO: Should the most recent email not be in the payload?
-        const emails = await gmailService.fetchLastEmails(1);
+        if (Object.keys(payload).includes("message") || Object.keys(payload).includes("messages")) {
+            const email = payload.message || payload.messages[0];
+            this.logger.info(`Processing email: ${email.id} from payload: ${JSON.stringify(payload)} in GmailWebhookController.handlePushNotification`);
+        }
+        const emailServiceTuples = await this.emailServiceManager.fetchLastNEmails({ count: 1 });
 
-        for (const email of emails) {
+        for (const { email, service } of emailServiceTuples) {
             // Save to processed objects log
             await this.processedObjectRepo.save({
                 project_id: email.threadId, // You might want to implement proper project ID logic
@@ -35,7 +37,7 @@ export class GmailWebhookController {
             });
 
             // Process the email
-            await gmailService.categoriseEmail(email);
+            await service.categoriseEmail(email);
         }
     }
 } 
