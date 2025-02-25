@@ -6,6 +6,7 @@ import { createRedisClient } from '../lib/redis/RedisProvider';
 import { WinstonLogger } from '../lib/logger/WinstonLogger';
 import { GmailWebhookController } from './controllers/gmail-webhook.controller';
 import { GoogleAuthForWeb } from '../lib/utils/gmailAuth';
+import { GmailListenerService } from '../EmailService/GmailListener';
 
 @Module({
     imports: [
@@ -16,6 +17,7 @@ import { GoogleAuthForWeb } from '../lib/utils/gmailAuth';
     ],
     providers: [
         GmailInitService,
+        GmailListenerService,
         {
             provide: 'REDIS_CLIENT',
             useFactory: () => createRedisClient()
