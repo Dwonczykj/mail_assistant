@@ -1,24 +1,18 @@
 import { google } from 'googleapis';
 import { Credentials, OAuth2Client } from 'google-auth-library';
-import { authenticate } from '@google-cloud/local-auth';
-import fs from 'fs';
-import path from 'path';
-import readline from 'readline';
 import Redis from 'ioredis';
 import { container } from 'tsyringe';
-import process from 'process';
 import { config } from '../../Config/config';
 import { ILogger } from '../logger/ILogger';
-import { openUrl } from './openUrl'; // Added cross-platform URL opener using child_process
-import { IGmailAuth } from './IGmailAuth';
+import { IGoogleAuth } from './IGoogleAuth';
 import { redisConfig } from '../redis/RedisConfig';
 import { inject, injectable } from 'tsyringe';
 
 
 
 
-abstract class GoogleAuth implements IGmailAuth {
-    private authClient: OAuth2Client | null = null;
+abstract class GoogleAuth implements IGoogleAuth {
+    private oAuth2Client: OAuth2Client | null = null;
     constructor(
         @inject('REDIS_CLIENT') private readonly redis: Redis,
         @inject('ILogger') private readonly logger: ILogger
@@ -27,87 +21,127 @@ abstract class GoogleAuth implements IGmailAuth {
     abstract oauth: {
         token: string;
         expiry: string;
+        refreshToken: string;
     };
 
     abstract type: 'daemon' | 'web';
 
 
     async initializeGoogleClient(): Promise<OAuth2Client> {
-        this.authClient = await this.initializeGoogleClientInternal();
-        return this.authClient;
+        this.oAuth2Client = await this.initializeGoogleClientInternal({ useFileCredentials: this.type === 'daemon' });
+        return this.oAuth2Client;
     }
 
     private async initializeGoogleClientInternal({ useFileCredentials }: { useFileCredentials?: boolean } = { useFileCredentials: true }): Promise<OAuth2Client> {
-        // First check for redis token and expiry and return
-
-
-        // TODO: REDIS Keys need to differentiate their names for web and daemon
-        const clientFromRedis = await this.loadSavedCredentialsFromRedis();
-        if (clientFromRedis) {
-            return clientFromRedis;
-        }
-        // Second check for file token and expiry and return
-        const clientFromFile = await this.loadSavedCredentialsSessionTokenIfExist({ tokenPath: config.tokenPath[this.type] });
-        if (clientFromFile) {
-            return clientFromFile;
-        }
-        // Third, if none of the above, authorize and return
         let client: OAuth2Client;
         if (useFileCredentials) {
+            this.logger.debug("Initializing Google client with file credentials");
+            const { authenticate } = await import('@google-cloud/local-auth');
+            client = await authenticate({
+                scopes: config.google.scopes,
+                keyfilePath: config.credentialsPath[this.type],
+            });
+        } else {
             client = new OAuth2Client({
                 clientId: config.googleClientId,
                 clientSecret: config.googleClientSecret,
                 redirectUri: config.googleRedirectUri,
             });
-        } else {
-            client = await authenticate({
-                scopes: config.google.scopes,
-                keyfilePath: config.credentialsPath[this.type],
-            });
         }
+
+        await this.loadSavedCredentialsFromRedis({ client });
         if (client.credentials) {
             await this.saveSessionToken(client);
         }
+
         return client;
     }
 
-    public async handleOAuthCallback({ code, authProvider, }: { code: string, authProvider: IGmailAuth, }): Promise<void> {
-        if (!this.authClient) {
-            this.authClient = new OAuth2Client();
+    public async handleOAuthCallback({ code }: { code: string }): Promise<void> {
+        if (!this.oAuth2Client) {
+            this.oAuth2Client = new OAuth2Client({
+                clientId: config.googleClientId,
+                clientSecret: config.googleClientSecret,
+                redirectUri: config.googleRedirectUri,
+            });
         }
 
-        const { tokens } = await this.authClient.getToken(code);
-        this.authClient.setCredentials(tokens);
+        const { tokens } = await this.oAuth2Client.getToken(code);
+        this.oAuth2Client.setCredentials(tokens);
         const credentials = tokens;
-        await this.saveSessionToken(this.authClient);
+        await this.saveSessionToken(this.oAuth2Client);
         this.logger.info('OAuth2 tokens received and set');
     }
 
     public getAuthUrl(): string {
-        if (!this.authClient) {
+        if (!this.oAuth2Client) {
             throw new Error('OAuth2 client not configured');
         }
 
-        return this.authClient.generateAuthUrl({
+        return this.oAuth2Client.generateAuthUrl({
             access_type: 'offline',
             scope: config.google.scopes,
+            prompt: 'consent', // Force consent screen to ensure refresh token
         });
+    }
+
+    async getCredentials(): Promise<Credentials | null> {
+        if (!this.oAuth2Client) {
+            return null;
+        }
+        return this.oAuth2Client.credentials;
+    }
+
+    async refreshToken(): Promise<void> {
+        if (!this.oAuth2Client) {
+            throw new Error('OAuth2Client not initialized');
+        }
+
+        try {
+            const refreshToken = await this.redis.get(this.oauth.refreshToken);
+            if (!refreshToken) {
+                throw new Error('No refresh token available');
+            }
+
+            this.oAuth2Client.setCredentials({
+                refresh_token: refreshToken
+            });
+
+            const { credentials } = await this.oAuth2Client.refreshAccessToken();
+
+            // Update Redis with new tokens
+            await Promise.all([
+                this.redis.set(redisConfig.keys.gmail.web.oauth.token, credentials.access_token!),
+                credentials.refresh_token && this.redis.set(
+                    redisConfig.keys.gmail.web.oauth.refreshToken,
+                    credentials.refresh_token
+                ),
+                credentials.expiry_date && this.redis.set(
+                    redisConfig.keys.gmail.web.oauth.expiry,
+                    credentials.expiry_date.toString()
+                )
+            ]);
+        } catch (error) {
+            this.logger.error('Failed to refresh token:', { error });
+            throw error;
+        }
     }
 
     /**
      * Loads the saved credentials from redis.
      * @returns The saved credentials or null if none found.
      */
-    private async loadSavedCredentialsFromRedis(): Promise<OAuth2Client | null> {
-        let client: OAuth2Client;
-        const [token, expiry] = await Promise.all([
-            this.redis.get(this.oauth.token),
-            this.redis.get(this.oauth.expiry)
+    private async loadSavedCredentialsFromRedis({ client }: { client: OAuth2Client }): Promise<OAuth2Client | null> {
+        const [accessToken, refreshToken, expiry] = await Promise.all([
+            this.redis.get(redisConfig.keys.gmail.web.oauth.token),
+            this.redis.get(redisConfig.keys.gmail.web.oauth.refreshToken),
+            this.redis.get(redisConfig.keys.gmail.web.oauth.expiry)
         ]);
-        if (token && expiry && Date.now() < parseInt(expiry)) {
-            client = new OAuth2Client();
+        if (accessToken && refreshToken && expiry && Date.now() < parseInt(expiry)) {
+            client = client ?? new OAuth2Client();
             const credentials: Credentials = {
-                access_token: token,
+                access_token: accessToken,
+                refresh_token: refreshToken,
                 expiry_date: parseInt(expiry)
             };
             client.setCredentials(credentials);
@@ -116,13 +150,19 @@ abstract class GoogleAuth implements IGmailAuth {
         return null;
     }
 
+    /**
+     * DEPRECATED
+     * @param tokenPath The path to the token file.
+     * @returns The OAuth2 client or null if no token found.
+     */
     private async loadSavedCredentialsSessionTokenIfExist({
         tokenPath,
     }: {
         tokenPath: string;
     }): Promise<OAuth2Client | null> {
         try {
-            const tokenStr = await fs.promises.readFile(tokenPath, 'utf-8');
+            const { readFile, unlink } = await import('fs/promises');
+            const tokenStr = await readFile(tokenPath, 'utf-8');
             const token = JSON.parse(tokenStr);
             if (token) {
                 let expiry: number | undefined;
@@ -135,7 +175,7 @@ abstract class GoogleAuth implements IGmailAuth {
                 if (expiry && Date.now() > expiry - 60000) {
                     console.log("Stored token has expired on " + new Date(expiry).toISOString() + " or is about to expire. Ignoring old token and initiating new OAuth flow.");
                     // Optionally remove the old token file so it won't be used next time.
-                    fs.unlinkSync(tokenPath);
+                    await unlink(tokenPath);
                     return null;
                 } else {
                     return google.auth.fromJSON(token) as OAuth2Client;
@@ -153,23 +193,28 @@ abstract class GoogleAuth implements IGmailAuth {
      */
     private async saveSessionToken(client: OAuth2Client) {
         // Save to file
-        const content = await fs.promises.readFile(config.credentialsPath[this.type], 'utf-8');
-        const keys = JSON.parse(content);
-        const key = keys.installed || keys.web;
-        const payload = JSON.stringify({
-            type: 'authorized_user',
-            client_id: key.client_id,
-            client_secret: key.client_secret,
-            refresh_token: client.credentials.refresh_token,
-        });
-        await fs.promises.writeFile(config.tokenPath[this.type], payload);
+        if (this.type === 'daemon') {
+            const { readFile, writeFile } = await import('fs/promises');
+            const content = await readFile(config.credentialsPath[this.type], 'utf-8');
+            const keys = JSON.parse(content);
+            const key = keys.installed || keys.web;
+            const payload = JSON.stringify({
+                type: 'authorized_user',
+                client_id: key.client_id,
+                client_secret: key.client_secret,
+                refresh_token: client.credentials.refresh_token,
+            });
+            await writeFile(config.tokenPath[this.type], payload);
+        }
 
         // Save to redis
         const expiryDate = client.credentials.expiry_date;
         const token = client.credentials.access_token;
-        if (expiryDate && token) {
+        const refreshToken = client.credentials.refresh_token;
+        if (token) {
             await this.redis.set(this.oauth.token, token);
-            await this.redis.set(this.oauth.expiry, expiryDate.toString());
+            await this.redis.set(this.oauth.expiry, expiryDate?.toString() || "0");
+            await this.redis.set(this.oauth.refreshToken, refreshToken || '');
         }
 
         return client;
@@ -177,7 +222,7 @@ abstract class GoogleAuth implements IGmailAuth {
 }
 
 @injectable()
-export class GoogleAuthForDaemon extends GoogleAuth implements IGmailAuth {
+export class GoogleAuthForDaemon extends GoogleAuth implements IGoogleAuth {
     constructor(
         @inject('REDIS_CLIENT') redis: Redis,
         @inject('ILogger') logger: ILogger
@@ -187,12 +232,13 @@ export class GoogleAuthForDaemon extends GoogleAuth implements IGmailAuth {
 
     oauth = {
         token: redisConfig.keys.gmail.daemon.oauth.token,
-        expiry: redisConfig.keys.gmail.daemon.oauth.expiry
+        expiry: redisConfig.keys.gmail.daemon.oauth.expiry,
+        refreshToken: redisConfig.keys.gmail.daemon.oauth.refreshToken
     }
     type: 'daemon' = 'daemon';
 }
 @injectable()
-export class GoogleAuthForWeb extends GoogleAuth implements IGmailAuth {
+export class GoogleAuthForWeb extends GoogleAuth implements IGoogleAuth {
     constructor(
         @inject('REDIS_CLIENT') redis: Redis,
         @inject('ILogger') logger: ILogger
@@ -202,9 +248,11 @@ export class GoogleAuthForWeb extends GoogleAuth implements IGmailAuth {
 
     oauth = {
         token: redisConfig.keys.gmail.web.oauth.token,
-        expiry: redisConfig.keys.gmail.web.oauth.expiry
+        expiry: redisConfig.keys.gmail.web.oauth.expiry,
+        refreshToken: redisConfig.keys.gmail.web.oauth.refreshToken
     }
     type: 'web' = 'web';
+
 }
 
 /**

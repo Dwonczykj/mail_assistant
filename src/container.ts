@@ -11,7 +11,7 @@ import { FyxerActionRepository } from './Repository/FyxerActionRepository';
 import { AppDataSource } from './data/data-source';
 import { createRedisClient } from './lib/redis/RedisProvider';
 import Redis from 'ioredis';
-import { IGmailAuth } from './lib/utils/IGmailAuth';
+import { IGoogleAuth } from './lib/utils/IGoogleAuth';
 import { GoogleAuthForDaemon } from './lib/utils/gmailAuth';
 
 // Initialize TypeORM connection
@@ -30,8 +30,8 @@ container.register<ICategoriser>('ICategoriser', { useFactory: () => Categoriser
 // Register Redis client for dependency injection.
 container.register<Redis>('REDIS_CLIENT', { useFactory: createRedisClient });
 
-// Register GmailAuthForDaemon as the IGmailAuth implementation for dependency injection.
-container.register<IGmailAuth>('IGmailAuth', { useClass: GoogleAuthForDaemon });
+// Register GmailAuthForDaemon as the IGoogleAuth implementation for dependency injection.
+container.register<IGoogleAuth>('IGoogleAuth', { useClass: GoogleAuthForDaemon });
 
 // Register MockEmailRepository as the IMockEmailRepository implementation for dependency injection.
 container.register<IMockEmailRepository>('IMockEmailRepository', { useClass: MockEmailRepository });

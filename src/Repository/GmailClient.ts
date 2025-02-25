@@ -16,7 +16,7 @@ import Redis from 'ioredis';
 import { createRedisClient } from '../lib/redis/RedisProvider';
 import { redisConfig } from '../lib/redis/RedisConfig';
 import { pubSubConfig } from '../Config/pubSubConfig';
-import { IGmailAuth } from '../lib/utils/IGmailAuth';
+import { IGoogleAuth } from '../lib/utils/IGoogleAuth';
 
 export class GmailClient implements IEmailClient {
     private static instance: GmailClient | null = null;
@@ -48,7 +48,7 @@ export class GmailClient implements IEmailClient {
     static async getTemporaryInstance({
         authProvider,
     }: {
-        authProvider: IGmailAuth,
+        authProvider: IGoogleAuth,
     }): Promise<GmailClient> {
         GmailClient.instance ??= new GmailClient();
         GmailClient.instance.authClient = await authProvider.initializeGoogleClient();
@@ -88,10 +88,35 @@ export class GmailClient implements IEmailClient {
    * It sets up push notifications on the "INBOX" by using a webhook/topic that is setup in the Google Cloud Pub/Sub console and routes to our WebAPI application.
    */
     public async listenForIncomingEmails(): Promise<void> {
+        const topicName: string = config.google.gmailTopic || pubSubConfig.topicName;
         try {
-            const topicName: string = config.google.gmailTopic || pubSubConfig.topicName;
+            // Check if we have valid auth
+            if (!this.authClient || !this.httpEmailServerClient) {
+                this.logger.error('Gmail client not authenticated');
+                throw new Error('Gmail client not authenticated. Please authenticate first.');
+            }
+
+            // Check token validity and refresh if needed
+            try {
+                const credentials = await this.authClient.getAccessToken();
+                if (!credentials || !credentials.token) {
+                    throw new Error('No valid access token');
+                }
+            } catch (error) {
+                // Token might be expired, try to refresh
+                if (error instanceof Error && error.message.includes('No access token')) {
+                    const authProvider = container.resolve<IGoogleAuth>('IGoogleAuth');
+                    await authProvider.refreshToken();
+                    // Reinitialize client with new token
+                    this.authClient = await authProvider.initializeGoogleClient();
+                    this.httpEmailServerClient = google.gmail({ version: 'v1', auth: this.authClient });
+                } else {
+                    throw error;
+                }
+            }
+
             const subscriptionName: string = config.google.gmailSubscription || pubSubConfig.subscriptionName;
-            const res = await this.httpEmailServerClient!.users.watch({
+            const res = await this.httpEmailServerClient.users.watch({
                 userId: 'me',
                 requestBody: {
                     labelIds: ['INBOX'],
@@ -100,8 +125,48 @@ export class GmailClient implements IEmailClient {
             });
 
             this.logger.info('Watch response:', { "response": res.data });
-        } catch (error) {
-            this.logger.error('Failed to set up email watch:', { "error": error });
+        } catch (error: any) {
+            this.logger.error(`Failed to set up email watch for topic: ${topicName} with error: ${error}`, { "error": error.toString() });
+            throw error;
+        }
+    }
+
+    public async killIncomingEmailListener(): Promise<void> {
+        const topicName: string = config.google.gmailTopic || pubSubConfig.topicName;
+        const subscriptionName: string = config.google.gmailSubscription || pubSubConfig.subscriptionName;
+        try {
+            // // Check if we have valid auth
+            // if (!this.authClient || !this.httpEmailServerClient) {
+            //     this.logger.error('Gmail client not authenticated');
+            //     throw new Error('Gmail client not authenticated. Please authenticate first.');
+            // }
+
+            // // Check token validity and refresh if needed
+            // try {
+            //     const credentials = await this.authClient.getAccessToken();
+            //     if (!credentials || !credentials.token) {
+            //         throw new Error('No valid access token');
+            //     }
+            // } catch (error) {
+            //     // Token might be expired, try to refresh
+            //     if (error instanceof Error && error.message.includes('No access token')) {
+            //         const authProvider = container.resolve<IGoogleAuth>('IGoogleAuth');
+            //         await authProvider.refreshToken();
+            //         // Reinitialize client with new token
+            //         this.authClient = await authProvider.initializeGoogleClient();
+            //         this.httpEmailServerClient = google.gmail({ version: 'v1', auth: this.authClient });
+            //     } else {
+            //         throw error;
+            //     }
+            // }
+
+            await this.httpEmailServerClient?.users.stop({
+                userId: 'me',
+            });
+
+            this.logger.info('Killed incoming email listener');
+        } catch (error: any) {
+            this.logger.error(`Failed to kill incoming email listener with error: ${error}`, { "error": error.toString() });
             throw error;
         }
     }

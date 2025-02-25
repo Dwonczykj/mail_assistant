@@ -15,8 +15,8 @@ async function bootstrap(): Promise<void> {
         credentials: true,
     });
 
-    // Initialize email service and set up Gmail webhook
-    await initServices();
+    // BUG: This EmailServiceManager calls dependencies on the container, but here we need the nestjs container... we need a simple and obvious fix like sharing the nestjs container with the container.ts file instead of using tsyringe or something but keeping the separate IGoogleAuth implementations for both daemon and web.
+    // It should then be made very clear when authentication is needed and when it is called and why and where from.
     const emailServiceManager = EmailServiceManager.getInstance();
 
     const gmailService = await emailServiceManager.getEmailService('gmail');

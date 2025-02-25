@@ -29,6 +29,4 @@ export interface IAmEmailService {
     // categoriseEmail(email: Email): Promise<Email>;
 
     // archiveEmail(email: Email): Promise<Email>;
-
-    listenForIncomingEmails(): Promise<void>;
 }

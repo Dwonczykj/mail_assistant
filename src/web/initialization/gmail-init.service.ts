@@ -5,7 +5,7 @@ import Redis from 'ioredis';
 import { ILogger } from '../../lib/logger/ILogger';
 import { redisConfig } from '../../lib/redis/RedisConfig';
 import { OAuth2Client } from 'google-auth-library';
-import { IGmailAuth } from '../../lib/utils/IGmailAuth';
+import { IGoogleAuth } from '../../lib/utils/IGoogleAuth';
 import { google } from 'googleapis';
 @Injectable()
 export class GmailInitService implements OnModuleInit {
@@ -15,7 +15,7 @@ export class GmailInitService implements OnModuleInit {
         @Inject('ILogger')
         private readonly logger: ILogger,
         @Inject('IGoogleAuth')
-        private readonly googleAuth: IGmailAuth
+        private readonly googleAuth: IGoogleAuth
     ) { }
 
     async onModuleInit() {

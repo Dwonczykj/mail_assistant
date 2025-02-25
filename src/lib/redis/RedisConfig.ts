@@ -8,13 +8,15 @@ export const redisConfig = {
             daemon: {
                 oauth: {
                     token: 'gmail:daemon:oauth:token',
-                    expiry: 'gmail:daemon:oauth:expiry'
+                    expiry: 'gmail:daemon:oauth:expiry',
+                    refreshToken: 'gmail:daemon:oauth:refreshToken'
                 }
             },
             web: {
                 oauth: {
                     token: 'gmail:web:oauth:token',
-                    expiry: 'gmail:web:oauth:expiry'
+                    expiry: 'gmail:web:oauth:expiry',
+                    refreshToken: 'gmail:web:oauth:refreshToken'
                 }
             }
         }

@@ -9,6 +9,7 @@ import { IAmEmailService } from "./IAmEmailService";
 import { container } from "../container";
 import { ILogger } from "../lib/logger/ILogger";
 import { BadClientError } from "./errors/EmailServiceErrors";
+import { IGoogleAuth } from "../lib/utils/IGoogleAuth";
 
 export class EmailService implements IAmEmailService {
 
@@ -55,9 +56,15 @@ export class EmailService implements IAmEmailService {
         return await this.emailClient.fetchLastEmails(count);
     }
 
-    public async listenForIncomingEmails(): Promise<void> {
+    private async listenForIncomingEmails(): Promise<void> {
         if (this.emailClient instanceof GmailClient) {
-            await this.emailClient.listenForIncomingEmails();
+            // Get fresh auth client
+            const authProvider = container.resolve<IGoogleAuth>('IGoogleAuth');
+            const authenticatedClient = await GmailClient.getTemporaryInstance({
+                authProvider
+            });
+
+            await authenticatedClient.listenForIncomingEmails();
         } else {
             this.logger.error("Email client is not a GmailClient");
             throw new BadClientError("Email client is not a GmailClient");

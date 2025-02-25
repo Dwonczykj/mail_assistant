@@ -4,7 +4,7 @@ import { config } from '../../Config/config';
 import Redis from 'ioredis';
 import { ILogger } from '../../lib/logger/ILogger';
 import { redisConfig } from '../../lib/redis/RedisConfig';
-import { IGmailAuth as IGoogleAuth } from '../../lib/utils/IGmailAuth';
+import { IGoogleAuth } from '../../lib/utils/IGoogleAuth';
 
 @Injectable()
 export class AuthService {
@@ -18,9 +18,10 @@ export class AuthService {
     ) { }
 
     async getGoogleAuthUrl(): Promise<string> {
-        const [token, expiry] = await Promise.all([
+        const [token, expiry, refreshToken] = await Promise.all([
             this.redis.get(redisConfig.keys.gmail.web.oauth.token),
-            this.redis.get(redisConfig.keys.gmail.web.oauth.expiry)
+            this.redis.get(redisConfig.keys.gmail.web.oauth.expiry),
+            this.redis.get(redisConfig.keys.gmail.web.oauth.refreshToken)
         ]);
         // Check if a valid token is already cached
         if (token && expiry && Date.now() < parseInt(expiry)) {
@@ -36,7 +37,22 @@ export class AuthService {
 
     async handleGoogleCallback(code: string, sender: string): Promise<void> {
         this.logger.debug(`Handling OAuth callback with code: ${code}`);
-        // Assume handleOAuthCallback returns an object { access_token, expires_in: number }
-        await this.googleAuth.handleOAuthCallback({ code, authProvider: this.googleAuth });
+
+        // Handle OAuth callback
+        await this.googleAuth.handleOAuthCallback({ code });
+
+        // Get authenticated client
+        const gmailClient = await GmailClient.getTemporaryInstance({
+            authProvider: this.googleAuth
+        });
+
+        // Set up watch after authentication
+        try {
+            await gmailClient.listenForIncomingEmails();
+            this.logger.info('Successfully set up Gmail watch');
+        } catch (error) {
+            this.logger.error('Failed to set up Gmail watch after authentication', { error });
+            throw error;
+        }
     }
 } 
