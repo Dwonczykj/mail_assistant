@@ -2,29 +2,41 @@ import { IMailListener } from "./IMailListener";
 import { GmailClient } from "../Repository/GmailClient";
 import { Injectable, Inject, OnModuleInit, OnModuleDestroy, OnApplicationShutdown, OnApplicationBootstrap } from '@nestjs/common';
 import { ILogger } from "../lib/logger/ILogger";
+import { OAuth2Client } from "google-auth-library";
 
 @Injectable()
-export class GmailListenerService implements IMailListener, OnModuleInit, OnModuleDestroy, OnApplicationShutdown, OnApplicationBootstrap {
+export class GmailListenerService implements IMailListener {
+    private oAuthClient: OAuth2Client | null = null;
 
     constructor(@Inject(GmailClient) private readonly emailClient: GmailClient, @Inject("ILogger") private readonly logger: ILogger) { }
 
-    async onApplicationBootstrap() {
-        await this.start();
-    }
+    // async onApplicationBootstrap() {
+    //     await this.start();
+    // }
 
-    async onApplicationShutdown() {
-        await this.stop();
-    }
+    // async onApplicationShutdown() {
+    //     await this.stop();
+    // }
 
-    async onModuleInit() {
-        // await this.start();
-    }
+    // async onModuleInit() {
+    //     // await this.start();
+    // }
 
-    async onModuleDestroy() {
-        // await this.stop();
+    // async onModuleDestroy() {
+    //     // await this.stop();
+    // }
+
+    async authenticate({ oAuthClient }: { oAuthClient: OAuth2Client }): Promise<void> {
+        this.oAuthClient = oAuthClient;
     }
 
     async start(): Promise<void> {
+        if (!(await this.emailClient.authenticated)) {
+            if (!this.oAuthClient) {
+                throw new Error("OAuth client not authenticated");
+            }
+            await this.emailClient.authenticate({ oAuthClient: this.oAuthClient });
+        }
         await this.emailClient.listenForIncomingEmails();
     }
 

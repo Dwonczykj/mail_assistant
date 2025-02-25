@@ -5,28 +5,32 @@ import Redis from 'ioredis';
 import { ILogger } from '../../lib/logger/ILogger';
 import { redisConfig } from '../../lib/redis/RedisConfig';
 import { IGoogleAuth } from '../../lib/utils/IGoogleAuth';
+import { AuthEnvironment, GoogleAuthFactoryService } from '../../lib/auth/services/google-auth-factory.service';
+import { IGoogleAuthService } from '../../lib/auth/interfaces/google-auth.interface';
 
 @Injectable()
 export class AuthService {
+    private googleAuthService: IGoogleAuthService;
     constructor(
         @Inject('REDIS_CLIENT')
         private readonly redis: Redis,
         @Inject('ILogger')
         private readonly logger: ILogger,
-        @Inject('IGoogleAuth')
-        private readonly googleAuth: IGoogleAuth,
-        @Inject('GmailClient')
-        private readonly gmailClient: GmailClient,
-    ) { }
+        @Inject('GoogleAuthFactoryService')
+        private readonly googleAuthFactoryService: GoogleAuthFactoryService,
+        @Inject('APP_ENVIRONMENT')
+        private readonly environment: AuthEnvironment,
+        // @Inject('IGoogleAuth')
+        // private readonly googleAuth: IGoogleAuth,
+        // @Inject('GmailClient')
+        // private readonly gmailClient: GmailClient,
+    ) {
+        this.googleAuthService = this.googleAuthFactoryService.getAuthService(this.environment);
+    }
 
     async getGoogleAuthUrl(): Promise<string> {
-        const valid = await this.googleAuth.redisCacheAuthValid();
-        if (valid) {
-            this.logger.debug("Valid access token already exists. Skipping new OAuth configuration.");
-            return "ALREADY_AUTHENTICATED"; // Returning this special flag indicates authentication is complete.
-        }
-
-        const authUrl = this.googleAuth.getAuthUrl();
+        // TODO: Add redis cache once working within the google auth service
+        const authUrl = this.googleAuthService.getAuthUrl();
         this.logger.debug(`OAuth URL generated: ${authUrl}`);
         return authUrl;
     }
@@ -35,15 +39,15 @@ export class AuthService {
         this.logger.debug(`Handling OAuth callback with code: ${code}`);
 
         // Handle OAuth callback
-        await this.googleAuth.handleOAuthCallback({ code });
+        await this.googleAuthService.handleOAuthCallback({ code });
 
-        // Set up watch after authentication
-        try {
-            await this.gmailClient.listenForIncomingEmails();
-            this.logger.info('Successfully set up Gmail watch from handleGoogleCallback AuthService');
-        } catch (error) {
-            this.logger.error('Failed to set up Gmail watch after authentication', { error });
-            throw error;
-        }
+        // // Set up watch after authentication
+        // try {
+        //     await this.gmailClient.listenForIncomingEmails();
+        //     this.logger.info('Successfully set up Gmail watch from handleGoogleCallback AuthService');
+        // } catch (error) {
+        //     this.logger.error('Failed to set up Gmail watch after authentication', { error });
+        //     throw error;
+        // }
     }
 } 

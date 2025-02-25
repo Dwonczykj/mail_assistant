@@ -6,18 +6,49 @@ import { ObjectType } from '../data/entity/ProcessedObject';
 import { Inject, Injectable } from "@nestjs/common";
 import { GmailService } from "./GmailService";
 import { Email } from "../models/Email";
+import { OAuth2Client } from "google-auth-library";
+import { IGetOAuthClient, IReceiveOAuthClient } from "../lib/utils/IGoogleAuth";
+import { GoogleAuthFactoryService, AuthEnvironment } from '../lib/auth/services/google-auth-factory.service';
+import { IGoogleAuthService } from '../lib/auth/interfaces/google-auth.interface';
 
 @Injectable()
-export class EmailServiceManager {
+export class EmailServiceManager implements IGetOAuthClient {
     private emailServices: IAmEmailService[] = [];
+    private googleAuthService: IGoogleAuthService;
 
     constructor(
         @Inject('ILogger') private readonly logger: ILogger,
         @Inject('ProcessedObjectRepository') private readonly processedObjectRepo: ProcessedObjectRepository,
         @Inject('IMockEmailRepository') private readonly emailRepository: IMockEmailRepository,
         @Inject('GmailService') private readonly gmailService: GmailService,
+        private readonly googleAuthFactoryService: GoogleAuthFactoryService,
+        @Inject('APP_ENVIRONMENT') private readonly environment: AuthEnvironment,
     ) {
+        this.googleAuthService = this.googleAuthFactoryService.getAuthService(this.environment);
+        this.logger.info(`EmailServiceManager created with auth service: ${this.googleAuthService.constructor.name} in environment: ${this.environment}`);
         this.emailServices.push(this.gmailService);
+    }
+
+    public async authenticate(): Promise<OAuth2Client | null> {
+        const oauthClient = await this.googleAuthService.authenticate();
+        if (!oauthClient) {
+            this.logger.error("Failed to authenticate EmailServiceManager as google auth service returned null");
+            return null;
+        }
+        const authPromises = this.emailServices.map(service => service.authenticate({ oAuthClient: oauthClient }));
+        await Promise.all(authPromises);
+        return oauthClient;
+    }
+
+    public get oAuthClient(): OAuth2Client {
+        return this.googleAuthService.oAuthClient;
+    }
+
+    public get authenticated(): Promise<boolean> {
+        if (!this.emailServices.every(service => service.authenticated)) {
+            return Promise.resolve(false);
+        }
+        return this.googleAuthService.isAuthenticated();
     }
 
     public async getEmailServices(): Promise<IAmEmailService[]> {
@@ -72,7 +103,7 @@ export class EmailServiceManager {
     }
 
     public async saveLastNEmails({ serviceName = "*", lastNHours, count }: { serviceName?: string, lastNHours?: number, count: number }): Promise<void> {
-        this.logger.info(`Saving last ${count} emails from ${serviceName}`);
+        this.logger.info(`Fetching last ${count} emails from ${serviceName}`);
         const emailServiceTuples = await this.lastNEmails({ serviceName, lastNHours, count });
         await this.emailRepository.saveEmails(emailServiceTuples);
         this.logger.info(`Saved ${emailServiceTuples.length} emails to mock email repository`);
@@ -136,5 +167,20 @@ export class EmailServiceManager {
 
     private async processEmail({ email, service }: { email: Email, service: IAmEmailService }): Promise<void> {
         await service.categoriseEmail(email);
+    }
+
+    // Method to ensure authentication before operations
+    private async ensureAuthenticated(): Promise<void> {
+        if (!await this.googleAuthService.isAuthenticated()) {
+            await this.googleAuthService.authenticate();
+        } else {
+            await this.googleAuthService.refreshTokenIfNeeded();
+        }
+    }
+
+    // Use this before any Gmail API operations
+    async someGmailOperation(): Promise<void> {
+        await this.ensureAuthenticated();
+        // Now perform the operation with valid credentials
     }
 }   

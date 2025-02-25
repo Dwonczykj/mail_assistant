@@ -10,20 +10,31 @@ import { ILogger } from '../lib/logger/ILogger';
 import { FyxerAction } from '../data/entity/action';
 import { IFyxerActionRepository } from './IFyxerActionRepository';
 import { pubSubConfig } from '../Config/pubSubConfig';
-import { IGoogleAuth } from '../lib/utils/IGoogleAuth';
+import { IGoogleAuth, IHaveGoogleClient, IReceiveOAuthClient } from '../lib/utils/IGoogleAuth';
 import { Injectable, Inject } from '@nestjs/common';
+import { AuthEnvironment, GoogleAuthFactoryService } from '../lib/auth/services/google-auth-factory.service';
+import { IGoogleAuthService } from '../lib/auth/interfaces/google-auth.interface';
 
 @Injectable()
-export class GmailClient implements IEmailClient {
+export class GmailClient implements IEmailClient, IHaveGoogleClient<gmail_v1.Gmail> {
     private static instance: GmailClient | null = null;
     private authClient: OAuth2Client | null = null;
-    private httpEmailServerClient: gmail_v1.Gmail | null = null;
+    private _httpGoogleClient: gmail_v1.Gmail | null = null;
     private credentials: Credentials | null = null;
     private readonly emailAdaptor: GmailAdaptor;
     private gmailLabels: gmail_v1.Schema$Label[] = [];
     private gmailLabelsExpireAt: Date | null = null;
     private labelCreationLock: Promise<void> = Promise.resolve();
     public readonly name: string = "gmail";
+    private googleAuthService: IGoogleAuthService;
+
+    public get httpGoogleClient(): gmail_v1.Gmail | null {
+        return this._httpGoogleClient;
+    }
+
+    public get authenticated(): Promise<boolean> {
+        return Promise.resolve(this.authClient !== null);
+    }
 
     public get credentials_access_token(): string | null {
         return this.credentials?.access_token || null;
@@ -36,15 +47,25 @@ export class GmailClient implements IEmailClient {
     constructor(
         @Inject('ILogger') private readonly logger: ILogger,
         @Inject('IFyxerActionRepository') private readonly fyxerActionRepo: IFyxerActionRepository,
-        @Inject('IGoogleAuth') private readonly authProvider: IGoogleAuth,
+        private readonly googleAuthFactoryService: GoogleAuthFactoryService,
+        @Inject('APP_ENVIRONMENT') private readonly environment: AuthEnvironment,
     ) {
         this.authClient = null;
         this.emailAdaptor = new GmailAdaptor();
-        const instance = this;
-        this.authProvider.initializeGoogleClient().then((authClient) => {
-            instance.authClient = authClient;
-            instance.httpEmailServerClient = google.gmail({ version: 'v1', auth: instance.authClient });
-        });
+        this.googleAuthService = this.googleAuthFactoryService.getAuthService(this.environment);
+    }
+
+    public async authenticate({ oAuthClient }: { oAuthClient: OAuth2Client }): Promise<void> {
+        this.authClient = oAuthClient;
+        if (!this.authClient || !this.authClient.credentials.refresh_token) {
+            const newCreds = await this.googleAuthService.refreshTokenIfNeeded();
+            this.authClient.setCredentials({
+                access_token: newCreds.accessToken,
+                refresh_token: newCreds.refreshToken,
+                expiry_date: newCreds.expiryDate ? newCreds.expiryDate.getTime() : null,
+            });
+        }
+        this._httpGoogleClient = google.gmail({ version: 'v1', auth: this.authClient });
     }
 
     private async withLock<T>(operation: () => Promise<T>): Promise<T> {
@@ -74,6 +95,18 @@ export class GmailClient implements IEmailClient {
         return previousLock.then(() => unlockNext);
     }
 
+    private async refreshAuthClient(): Promise<void> {
+        const newCreds = await this.googleAuthService.refreshTokenIfNeeded();
+        if (!this.authClient) {
+            throw new Error('Gmail client not authenticated');
+        }
+        this.authClient.setCredentials({
+            access_token: newCreds.accessToken,
+            refresh_token: newCreds.refreshToken,
+            expiry_date: newCreds.expiryDate ? newCreds.expiryDate.getTime() : null,
+        });
+        this._httpGoogleClient = google.gmail({ version: 'v1', auth: this.authClient });
+    }
     /**
    * Listens for incoming emails using Gmail API's watch functionality.
    * It sets up push notifications on the "INBOX" by using a webhook/topic that is setup in the Google Cloud Pub/Sub console and routes to our WebAPI application.
@@ -82,31 +115,31 @@ export class GmailClient implements IEmailClient {
         const topicName: string = config.google.gmailTopic || pubSubConfig.topicName;
         try {
             // Check if we have valid auth
-            if (!this.authClient || !this.httpEmailServerClient) {
+            if (!this.authClient || !this.httpGoogleClient) {
                 this.logger.error('Gmail client not authenticated');
                 throw new Error('Gmail client not authenticated. Please authenticate first.');
             }
 
             // Check token validity and refresh if needed
             try {
-                const credentials = await this.authClient.getAccessToken();
-                if (!credentials || !credentials.token) {
+                // First refresh if necesary
+                await this.refreshAuthClient();
+                // const credentials = await this.authClient.getAccessToken();
+                if (!this.authClient?.credentials.access_token) {
                     throw new Error('No valid access token');
                 }
             } catch (error) {
                 // Token might be expired, try to refresh
-                if (error instanceof Error && error.message.includes('No access token')) {
-                    await this.authProvider.refreshToken();
-                    // Reinitialize client with new token
-                    this.authClient = await this.authProvider.initializeGoogleClient();
-                    this.httpEmailServerClient = google.gmail({ version: 'v1', auth: this.authClient });
-                } else {
-                    throw error;
-                }
+                // if (error instanceof Error && (error.message.includes('No access token') || error.message.includes('No refresh token'))) {
+                //     await this.authProvider.refreshToken();
+                //     await this.authenticate();
+                // } else {
+                //     throw error;
+                // }
+                this.logger.error('Failed to get access token', { "error": error });
+                throw error;
             }
-
-            const subscriptionName: string = config.google.gmailSubscription || pubSubConfig.subscriptionName;
-            const res = await this.httpEmailServerClient.users.watch({
+            const res = await this.httpGoogleClient.users.watch({
                 userId: 'me',
                 requestBody: {
                     labelIds: ['INBOX'],
@@ -122,8 +155,6 @@ export class GmailClient implements IEmailClient {
     }
 
     public async killIncomingEmailListener(): Promise<void> {
-        const topicName: string = config.google.gmailTopic || pubSubConfig.topicName;
-        const subscriptionName: string = config.google.gmailSubscription || pubSubConfig.subscriptionName;
         try {
             // // Check if we have valid auth
             // if (!this.authClient || !this.httpEmailServerClient) {
@@ -149,7 +180,7 @@ export class GmailClient implements IEmailClient {
             //     }
             // }
 
-            await this.httpEmailServerClient?.users.stop({
+            await this.httpGoogleClient?.users.stop({
                 userId: 'me',
             });
 
@@ -168,16 +199,19 @@ export class GmailClient implements IEmailClient {
         lastNHours?: number
     }): Promise<Email[]> {
         try {
-            const listResponse = await this.httpEmailServerClient!.users.messages.list({
+            //BUG: q is not working. Check the docs.
+            const query = `after:${lastNHours ? new Date(Date.now() - lastNHours * 60 * 60 * 1000).toISOString() : ''}`;
+            this.logger.info(`Fetching last ${count} emails from ${query}`);
+            const listResponse = await this.httpGoogleClient!.users.messages.list({
                 userId: 'me',
                 maxResults: count,
-                q: `after:${lastNHours ? new Date(Date.now() - lastNHours * 60 * 60 * 1000).toISOString() : ''}`
+                // q: query
             });
 
             const messagesList = listResponse.data.messages || [];
 
             const messagePromises = messagesList.map(async (msg) => {
-                const msgDetail = await this.httpEmailServerClient!.users.messages.get({
+                const msgDetail = await this.httpGoogleClient!.users.messages.get({
                     userId: 'me',
                     id: msg.id || '',
                 });
@@ -202,7 +236,7 @@ export class GmailClient implements IEmailClient {
         if (!this.isGmailLabelsExpired() && !forceRefresh) {
             return this.gmailLabels;
         }
-        const labelResponse = await this.httpEmailServerClient!.users.labels.list({
+        const labelResponse = await this.httpGoogleClient!.users.labels.list({
             userId: 'me'
         });
         this.gmailLabels = labelResponse.data.labels || [];
@@ -223,7 +257,7 @@ export class GmailClient implements IEmailClient {
 
                 if (!gmailLabel) {
                     try {
-                        const createResponse = await this.httpEmailServerClient!.users.labels.create({
+                        const createResponse = await this.httpGoogleClient!.users.labels.create({
                             userId: 'me',
                             requestBody: {
                                 name: label.name,
@@ -282,7 +316,7 @@ export class GmailClient implements IEmailClient {
         const gmailLabel = await this.getOrCreateGmailLabel(label);
 
         // Use the label ID instead of name
-        await this.httpEmailServerClient!.users.messages.modify({
+        await this.httpGoogleClient!.users.messages.modify({
             userId: 'me',
             id: email.messageId,
             requestBody: {

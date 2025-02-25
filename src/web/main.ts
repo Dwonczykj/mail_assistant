@@ -2,12 +2,16 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger } from '@nestjs/common';
 import { EmailServiceManager } from '../EmailService/EmailServiceManager';
+import { AuthEnvironment } from '../lib/auth/services/google-auth-factory.service';
 
 async function bootstrap(): Promise<void> {
     const logger = new Logger('Bootstrap');
-    const app = await NestFactory.create(AppModule, {
-        logger: ['error', 'warn', 'log', 'debug', 'verbose']
-    });
+
+    // Create the app with the WEB environment
+    const app = await NestFactory.create(
+        AppModule.forRoot(AuthEnvironment.WEB),
+        { logger: ['error', 'warn', 'log', 'debug', 'verbose'] }
+    );
 
     // Enable CORS for development
     app.enableCors({
@@ -15,11 +19,8 @@ async function bootstrap(): Promise<void> {
         credentials: true,
     });
 
-    // BUG: This EmailServiceManager calls dependencies on the container, but here we need the nestjs container... we need a simple and obvious fix like sharing the nestjs container with the container.ts file instead of using tsyringe or something but keeping the separate IGoogleAuth implementations for both daemon and web.
-    // It should then be made very clear when authentication is needed and when it is called and why and where from.
+    // Get the email service manager
     const emailServiceManager = app.get(EmailServiceManager);
-
-    await emailServiceManager.registerMailboxListeners();
 
     const port = process.env.WEB_PORT || 3000;
     await app.listen(port);
@@ -33,12 +34,6 @@ async function bootstrap(): Promise<void> {
 
     process.on('SIGTERM', async () => {
         logger.log('SIGTERM received, shutting down...');
-        await emailServiceManager.destroyMailboxListeners();
-        process.exit(0);
-    });
-
-    process.on('SIGKILL', async () => {
-        logger.log('SIGKILL received, shutting down...');
         await emailServiceManager.destroyMailboxListeners();
         process.exit(0);
     });

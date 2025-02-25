@@ -3,6 +3,7 @@ import { ILogger } from './lib/logger/ILogger';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './web/app.module';
 import { EmailServiceManager } from './EmailService/EmailServiceManager';
+import { AuthEnvironment } from './lib/auth/services/google-auth-factory.service';
 
 
 /**
@@ -11,7 +12,12 @@ import { EmailServiceManager } from './EmailService/EmailServiceManager';
  */
 async function main(): Promise<void> {
     console.log("Daemon started");
-    const appContext = await NestFactory.createApplicationContext(AppModule);
+
+    // Create the app context with the DESKTOP environment
+    const appContext = await NestFactory.createApplicationContext(
+        AppModule.forRoot(AuthEnvironment.DESKTOP)
+    );
+
     const logger = await appContext.resolve<ILogger>('ILogger');
 
     // Set up signal handlers for graceful shutdown
@@ -27,16 +33,13 @@ async function main(): Promise<void> {
         process.exit(0);
     });
 
-    process.on('SIGKILL', async () => {
-        logger.info("Received SIGKILL, shutting down...");
-        await appContext.close();
-        process.exit(0);
-    });
-
-
     logger.info("Worker started");
 
     const emailServiceManager = appContext.get(EmailServiceManager);
+
+    if (!(await emailServiceManager.authenticated)) {
+        await emailServiceManager.authenticate();
+    }
 
     await emailServiceManager.saveLastNEmails({ serviceName: "*", count: 10 });
     await emailServiceManager.fetchAndLabelLastEmails({ serviceName: "*", count: 10 });
@@ -44,7 +47,6 @@ async function main(): Promise<void> {
     while (true) {
         // POLL for new emails every 60 seconds? before we register the webhook to process each new email for us rather than running this daemon.
         await new Promise<void>(resolve => setTimeout(resolve, 60000));
-
     }
 }
 

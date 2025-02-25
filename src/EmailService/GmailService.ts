@@ -4,7 +4,6 @@ import { GmailClient } from "../Repository/GmailClient";
 import { ILogger } from "../lib/logger/ILogger";
 import { EmailService } from "./EmailService";
 import { ICategoriser } from "../Categoriser/ICategoriser";
-import { GmailListenerService } from "./GmailListener";
 import { IMailListener } from "./IMailListener";
 
 @Injectable()

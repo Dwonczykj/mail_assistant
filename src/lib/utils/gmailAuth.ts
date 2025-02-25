@@ -122,7 +122,7 @@ abstract class GoogleAuth implements IGoogleAuth {
                 )
             ]);
         } catch (error) {
-            this.logger.error('Failed to refresh token:', { error });
+            this.logger.error('Failed to refresh token:', { error: `${error}` });
             throw error;
         }
     }
@@ -197,7 +197,7 @@ abstract class GoogleAuth implements IGoogleAuth {
      */
     private async saveSessionToken(client: OAuth2Client) {
         // Save to file
-        if (this.type === 'daemon') {
+        if (false) {
             const { readFile, writeFile } = await import('fs/promises');
             const content = await readFile(config.credentialsPath[this.type], 'utf-8');
             const keys = JSON.parse(content);
@@ -207,16 +207,18 @@ abstract class GoogleAuth implements IGoogleAuth {
                 client_id: key.client_id,
                 client_secret: key.client_secret,
                 refresh_token: client.credentials.refresh_token,
+                expiry_date: client.credentials.expiry_date?.toString() || "0",
+                access_token: client.credentials.access_token
             });
             await writeFile(config.tokenPath[this.type], payload);
         }
 
         // Save to redis
         const expiryDate = client.credentials.expiry_date;
-        const token = client.credentials.access_token;
+        const accessToken = client.credentials.access_token;
         const refreshToken = client.credentials.refresh_token;
-        if (token) {
-            await this.redis.set(this.oauth.token, token);
+        if (accessToken) {
+            await this.redis.set(this.oauth.token, accessToken);
             await this.redis.set(this.oauth.expiry, expiryDate?.toString() || "0");
             await this.redis.set(this.oauth.refreshToken, refreshToken || '');
         }

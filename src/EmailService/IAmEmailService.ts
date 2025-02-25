@@ -1,7 +1,8 @@
 import { Email } from "../models/Email";
 import { IMailListener } from "./IMailListener";
+import { IReceiveOAuthClient } from "../lib/utils/IGoogleAuth";
 
-export interface IAmEmailService {
+export interface IAmEmailService extends IReceiveOAuthClient {
     readonly name: string;
     readonly listenerService: IMailListener;
 

@@ -1,34 +1,23 @@
-import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
-import { GmailClient } from '../../Repository/GmailClient';
-import { config } from '../../Config/config';
-import Redis from 'ioredis';
+import { Injectable, OnModuleInit, Inject, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
 import { ILogger } from '../../lib/logger/ILogger';
-import { redisConfig } from '../../lib/redis/RedisConfig';
-import { OAuth2Client } from 'google-auth-library';
-import { IGoogleAuth } from '../../lib/utils/IGoogleAuth';
-import { google } from 'googleapis';
+import { EmailServiceManager } from '../../EmailService/EmailServiceManager';
 @Injectable()
-export class GmailInitService implements OnModuleInit {
+export class GmailInitService implements OnApplicationBootstrap, OnApplicationShutdown {
     constructor(
-        @Inject('REDIS_CLIENT')
-        private readonly redis: Redis,
         @Inject('ILogger')
         private readonly logger: ILogger,
-        @Inject('GmailClient')
-        private readonly gmailClient: GmailClient,
+        @Inject('EmailServiceManager')
+        private readonly emailServiceManager: EmailServiceManager,
     ) { }
 
-    async onModuleInit() {
-        await this.initializeGoogleClient();
+    async onApplicationBootstrap() {
+        this.logger.info('Initializing Gmail service...');
+        await this.emailServiceManager.authenticate();
+        await this.emailServiceManager.registerMailboxListeners();
+        this.logger.info('Gmail service initialized successfully');
     }
 
-    async initializeGoogleClient(): Promise<GmailClient> {
-        try {
-            this.logger.info('Gmail client initialized during bootstrap');
-            return this.gmailClient;
-        } catch (error) {
-            this.logger.error('Failed to initialize Gmail client during bootstrap:', { error });
-            throw error;
-        }
+    async onApplicationShutdown() {
+        await this.emailServiceManager.destroyMailboxListeners();
     }
 } 

@@ -6,7 +6,8 @@ import { IAmEmailService } from "./IAmEmailService";
 import { ILogger } from "../lib/logger/ILogger";
 import { Injectable, Inject } from "@nestjs/common";
 import { IMailListener } from "./IMailListener";
-
+import { IReceiveOAuthClient } from "../lib/utils/IGoogleAuth";
+import { OAuth2Client } from "google-auth-library";
 
 @Injectable()
 export abstract class EmailService implements IAmEmailService {
@@ -18,6 +19,15 @@ export abstract class EmailService implements IAmEmailService {
         @Inject("ILogger") private readonly logger: ILogger,
         @Inject("ICategoriser") private readonly categoriser: ICategoriser,
     ) { }
+
+    public async authenticate({ oAuthClient }: { oAuthClient: OAuth2Client }): Promise<void> {
+        await this.emailClient.authenticate({ oAuthClient });
+        await this.listenerService.authenticate({ oAuthClient });
+    }
+
+    public get authenticated(): Promise<boolean> {
+        return this.emailClient.authenticated;
+    }
 
     /**
      * Categorises an email if not already labelled.
