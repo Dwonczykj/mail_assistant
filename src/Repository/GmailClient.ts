@@ -9,7 +9,7 @@ import { Email } from '../models/Email';
 import { ILogger } from '../lib/logger/ILogger';
 import { FyxerAction } from '../data/entity/action';
 import { IFyxerActionRepository } from './IFyxerActionRepository';
-import { pubSubConfig } from '../Config/pubSubConfig';
+import { gmailPubSubConfig } from '../Config/config';
 import { IGoogleAuth, IHaveGoogleClient, IReceiveOAuthClient } from '../lib/utils/IGoogleAuth';
 import { Injectable, Inject } from '@nestjs/common';
 import { AuthEnvironment, GoogleAuthFactoryService } from '../lib/auth/services/google-auth-factory.service';
@@ -112,7 +112,7 @@ export class GmailClient implements IEmailClient, IHaveGoogleClient<gmail_v1.Gma
    * It sets up push notifications on the "INBOX" by using a webhook/topic that is setup in the Google Cloud Pub/Sub console and routes to our WebAPI application.
    */
     public async listenForIncomingEmails(): Promise<void> {
-        const topicName: string = config.google.gmailTopic || pubSubConfig.topicName;
+        const topicName: string = config.google.gmailTopic || gmailPubSubConfig.topicName;
         try {
             // Check if we have valid auth
             if (!this.authClient || !this.httpGoogleClient) {
@@ -147,6 +147,8 @@ export class GmailClient implements IEmailClient, IHaveGoogleClient<gmail_v1.Gma
                 },
             });
 
+            //TODO: Also need to confirm webhook is working in webapi for pub/sub with this topicName
+            // TODO: Is there a web gui for pub/sub?
             this.logger.info('Watch response:', { "response": res.data });
         } catch (error: any) {
             this.logger.error(`Failed to set up email watch for topic: ${topicName} with error: ${error}`, { "error": error.toString() });
@@ -199,7 +201,6 @@ export class GmailClient implements IEmailClient, IHaveGoogleClient<gmail_v1.Gma
         lastNHours?: number
     }): Promise<Email[]> {
         try {
-            //BUG: q is not working. Check the docs. Also need to confirm webhook is working in webapi for pub/sub
             const query = `after:${lastNHours ? Math.floor(new Date(Date.now() - lastNHours * 60 * 60 * 1000).getTime() / 1000) : ''}`;
             this.logger.info(`Fetching last ${count} emails from ${query}`);
             const listResponse = await this.httpGoogleClient!.users.messages.list({

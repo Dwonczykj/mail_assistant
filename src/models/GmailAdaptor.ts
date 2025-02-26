@@ -4,6 +4,7 @@ import { gmail_v1 } from "googleapis";
 
 
 export class GmailAdaptor implements IAdaptorForEmails<gmail_v1.Schema$Message> {
+    public readonly messages: string[] = [];
     adapt(email: gmail_v1.Schema$Message): Email {
         // Extract email details required for categorisation.
         const threadId = email.threadId || "";
@@ -33,5 +34,26 @@ export class GmailAdaptor implements IAdaptorForEmails<gmail_v1.Schema$Message> 
             bccRecipients: [],
             ccRecipients: []
         }
-    }
+    };
+
+    public validate = (email: gmail_v1.Schema$Message): boolean => {
+        let valid = true;
+        if (!email.id) {
+            this.messages.push(`GmailAdaptor.validate: No id for email: ${JSON.stringify(email)}`);
+            valid = false;
+        }
+        if (!email.threadId) {
+            this.messages.push(`GmailAdaptor.validate: No threadId for email: ${JSON.stringify(email)}`);
+            valid = false;
+        }
+        if (!email.internalDate) {
+            this.messages.push(`GmailAdaptor.validate: No internalDate for email: ${JSON.stringify(email)}`);
+            valid = false;
+        }
+        if (!email.payload?.headers || email.payload?.headers.length === 0) {
+            this.messages.push(`GmailAdaptor.validate: No headers for email: ${JSON.stringify(email)}`);
+            valid = false;
+        }
+        return valid;
+    };
 }

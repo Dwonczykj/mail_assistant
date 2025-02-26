@@ -1,4 +1,4 @@
-import {ICategoriser} from "./ICategoriser";
+import { ICategoriser } from "./ICategoriser";
 import { Email } from "../models/Email";
 import { IEmailCategorisation } from "./IEmailCategorisation";
 

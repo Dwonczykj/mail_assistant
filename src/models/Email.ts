@@ -11,6 +11,10 @@ export class Email {
     labels!: string[];
     readonly attachments!: Attachment[];
     location!: string;
+    readonly snippet?: string | null;
+    readonly historyId?: string;
+    readonly internalDate?: string;
+    readonly headers?: Record<string, string>;
 }
 
 export class Attachment {

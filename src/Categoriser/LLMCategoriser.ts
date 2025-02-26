@@ -25,15 +25,22 @@ export interface IEmailData {
 
 @Injectable()
 export class LLMCategoriser implements ICategoriser {
-    private static labels = [
-        "Primary",
-        "Work",
-        "Personal",
-        "Social",
-        "Spam",
-        "Updates",
-        "Promotions",
-        "Other"
+    private static labelDescriptionTuples = [
+        { label: "Primary", description: "Primary email" },
+        { label: "Work", description: "Work email" },
+        { label: "Personal", description: "Personal email" },
+        { label: "Social", description: "Social email" },
+        { label: "Newsletter", description: "Newsletter email" },
+        { label: "Updates", description: "Updates email" },
+        { label: "Promotions", description: "Promotions email" },
+        { label: "Spam", description: "Spam email" },
+        { label: "Finance", description: "Finance email" },
+        { label: "Client", description: "Client email" },
+        { label: "Invoice", description: "Invoice email" },
+        { label: "Shipping", description: "Shipping email" },
+        { label: "Order", description: "Order email" },
+        { label: "Receipt", description: "Receipt email" },
+        { label: "Other", description: "Other email" }
     ];
 
     constructor(private llm: BaseChatModel | LLM, @Inject("ILogger") private logger: ILogger) {
@@ -77,7 +84,7 @@ export class LLMCategoriser implements ICategoriser {
         // Define the parser
         const parser = StructuredOutputParser.fromZodSchema(
             z.object({
-                label: z.enum(LLMCategoriser.labels as [string, ...string[]]),
+                label: z.enum(LLMCategoriser.labelDescriptionTuples.map(t => t.label) as [string, ...string[]]),
                 labelConfidence: z.number(),
                 reason: z.string()
             } as { [key in keyof IEmailCategorisation]: z.ZodType<IEmailCategorisation[key]> })
@@ -112,7 +119,7 @@ Provide your response:`,
 
         const formattedPrompt = await prompt.format({
             emailDetails: emailDetails,
-            labels: LLMCategoriser.labels.join(", ")
+            labels: LLMCategoriser.labelDescriptionTuples.map(t => `{label: ${t.label}, description: ${t.description}}`).join(", ")
         });
 
         if (this.llm instanceof BaseChatModel) {
@@ -211,9 +218,9 @@ Provide your response:`,
 
             // Fallback: Basic text parsing
             const lines = response.split('\n');
-            const label = LLMCategoriser.labels.find(l =>
-                response.toLowerCase().includes(l.toLowerCase())
-            ) || "Other";
+            const label = LLMCategoriser.labelDescriptionTuples.find(t =>
+                response.toLowerCase().includes(t.label.toLowerCase())
+            )?.label || "Other";
 
             return {
                 label,

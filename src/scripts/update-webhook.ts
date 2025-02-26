@@ -2,7 +2,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import axios from 'axios';
 import dotenv from 'dotenv';
-import { pubSubConfig } from '../Config/pubSubConfig';
+import { config } from '../Config/config';
 
 const execAsync = promisify(exec);
 
@@ -60,17 +60,18 @@ async function executeCommand(command: string): Promise<void> {
     }
 }
 
-async function updateWebhook(): Promise<void> {
+async function updateWebhook({ topicName, subscriptionName, webhookSubPath }: { topicName: string, subscriptionName: string, webhookSubPath: string }): Promise<void> {
     try {
         const ngrokUrl = await getNgrokUrl();
         console.log(`Found ngrok URL: ${ngrokUrl}`);
 
         // Create topic if it doesn't exist
-        await executeCommand(`gcloud pubsub topics create ${pubSubConfig.topicName.split('/').pop()}`);
+        await executeCommand(`gcloud pubsub topics create ${topicName.split('/').pop()}`);
 
+        // TODO: Grant Exchange Permissin for Exchange ACCOUNT name intead of gmail-api-push@system.gserviceaccount.com
         // Grant Gmail permission
         await executeCommand(
-            `gcloud pubsub topics add-iam-policy-binding ${pubSubConfig.topicName.split('/').pop()} \
+            `gcloud pubsub topics add-iam-policy-binding ${topicName.split('/').pop()} \
             --member="serviceAccount:gmail-api-push@system.gserviceaccount.com" \
             --role="roles/pubsub.publisher"`
         );
@@ -78,9 +79,9 @@ async function updateWebhook(): Promise<void> {
         // Try to create subscription first
         try {
             await executeCommand(
-                `gcloud pubsub subscriptions create ${pubSubConfig.subscriptionName.split('/').pop()} \
-                --topic=${pubSubConfig.topicName.split('/').pop()} \
-                --push-endpoint=${ngrokUrl}/webhooks/gmail`
+                `gcloud pubsub subscriptions create ${subscriptionName.split('/').pop()} \
+                --topic=${topicName.split('/').pop()} \
+                --push-endpoint=${ngrokUrl}/webhooks/${webhookSubPath}`
             );
         } catch (error: any) {
             if (error.message.startsWith('Created subscription')) {
@@ -89,19 +90,32 @@ async function updateWebhook(): Promise<void> {
             else if (error.message.includes('NOT_FOUND') || error.message.includes('ALREADY_EXISTS')) { // TODO: Check if error might actually contain something like "Subscription already exists" in CAPS
                 // If creation fails, try updating
                 await executeCommand(
-                    `gcloud pubsub subscriptions update ${pubSubConfig.subscriptionName.split('/').pop()} \
-                    --push-endpoint=${ngrokUrl}/webhooks/gmail`
+                    `gcloud pubsub subscriptions update ${subscriptionName.split('/').pop()} \
+                    --push-endpoint=${ngrokUrl}/webhooks/${webhookSubPath}`
                 );
             } else {
                 throw error;
             }
         }
 
-        console.log('Successfully configured Pub/Sub webhook');
+        console.log(`Successfully configured Pub/Sub webhook for ${topicName}`);
     } catch (error) {
         console.error('Failed to update webhook:', error);
         process.exit(1);
     }
 }
 
-updateWebhook(); 
+const threads = [
+    {
+        topicName: config.google.pubSubConfig.topicName,
+        subscriptionName: config.google.pubSubConfig.subscriptionName,
+        webhookSubPath: 'gmail/subscription'
+    },
+    {
+        topicName: config.exchange.pubSubConfig.topicName,
+        subscriptionName: config.exchange.pubSubConfig.subscriptionName,
+        webhookSubPath: 'exchange/subscription'
+    }
+].map(kwargs => updateWebhook(kwargs));
+
+Promise.all(threads);

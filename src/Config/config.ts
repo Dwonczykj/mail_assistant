@@ -27,7 +27,25 @@ const openrouter = {
     apiUrl: process.env.OPENROUTER_API_URL || '',
 };
 
+export interface PubSubConfig {
+    projectId: string;
+    topicName: string;
+    subscriptionName: string;
+}
+
+export const gmailPubSubConfig: PubSubConfig = {
+    projectId: process.env.GOOGLE_CLOUD_PROJECT_ID || '',
+    topicName: process.env.GOOGLE_TOPIC || `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/topics/gmail-notifications`,
+    subscriptionName: process.env.GOOGLE_SUBSCRIPTION || `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/subscriptions/gmail-notifications-sub`
+};
+export const exchangePubSubConfig: PubSubConfig = {
+    projectId: process.env.GOOGLE_CLOUD_PROJECT_ID || '',
+    topicName: process.env.GOOGLE_EXCHANGE_TOPIC || `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/topics/exchange-notifications`,
+    subscriptionName: process.env.GOOGLE_EXCHANGE_SUBSCRIPTION || `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/subscriptions/exchange-notifications-sub`
+};
+
 const google = {
+    pubSubConfig: gmailPubSubConfig,
     clientId: process.env.GOOGLE_CLIENT_ID || '',
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
     redirectUri: process.env.GOOGLE_REDIRECT_URI || `http://localhost:${webApiPort}/auth/google/callback`, // http://localhost:3000/auth/google/callback?code=4/0ASVgi3LqZJOmU7GrtxAykTlwUuKVD14UhQeV8TSrFIBmNl-u2iEMyVUiw3VgIiu1ZielNQ&scope=https://www.googleapis.com/auth/gmail.settings.sharing%20https://www.googleapis.com/auth/gmail.settings.basic%20https://www.googleapis.com/auth/gmail.modify
@@ -43,6 +61,7 @@ const google = {
         'https://www.googleapis.com/auth/gmail.settings.sharing',
     ],
     gmailTopic: process.env.GOOGLE_TOPIC || '',
+    exchangeTopic: process.env.GOOGLE_EXCHANGE_TOPIC || '',
     gmailSubscription: process.env.GOOGLE_SUBSCRIPTION || '',
     googleProjectId: process.env.GOOGLE_PROJECT_ID || '',
     llmModelsNames: [
@@ -56,11 +75,17 @@ const google = {
     ]
 }
 
+const exchange = {
+    pubSubConfig: exchangePubSubConfig,
+    subscriptionUrl: process.env.EXCHANGE_SUBSCRIPTION_URL || '',
+}
+
 export const config = {
     apiKeys,
     langchain,
     openrouter,
     google,
+    exchange,
     tokenPath: {
         daemon: path.join(process.cwd(), 'google_auth_daemon_token.json'),
         web: path.join(process.cwd(), 'google_auth_web_token.json'),

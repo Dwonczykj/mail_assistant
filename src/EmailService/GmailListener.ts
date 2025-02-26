@@ -3,6 +3,8 @@ import { GmailClient } from "../Repository/GmailClient";
 import { Injectable, Inject, OnModuleInit, OnModuleDestroy, OnApplicationShutdown, OnApplicationBootstrap } from '@nestjs/common';
 import { ILogger } from "../lib/logger/ILogger";
 import { OAuth2Client } from "google-auth-library";
+import { Message, PubSub } from "@google-cloud/pubsub";
+import { config } from "../Config/config";
 
 @Injectable()
 export class GmailListenerService implements IMailListener {
@@ -43,6 +45,31 @@ export class GmailListenerService implements IMailListener {
     async stop(): Promise<void> { // TODO: Ensure this method is called when the app shuts down or when the service is stopped using a with block. like pythonic __enter__ and __exit__ methods. What is this called in NestJS?
         await this.emailClient.killIncomingEmailListener();
     }
+
+    /**
+     * Pulls messages from Pub/Sub and processes them.
+     * This method creates a Pub/Sub subscription, sets up a message handler, and listens for incoming messages.
+     * It logs each received message and acknowledges it after processing.
+     * 
+     * @returns {Promise<void>} A promise that resolves when the subscription is successfully set up.
+    **/
+    async pullMessagesFromPubSubLoop(): Promise<void> {
+        const pubsub = new PubSub();
+        const topicName = config.google.pubSubConfig.topicName;
+        const subscriptionName = config.google.pubSubConfig.subscriptionName;
+        const subscription = pubsub.subscription(subscriptionName);
+        const messageHandler = async (message: Message) => {
+            this.logger.info(`Received message[${message.id}]: ${message.data} \nwith attributes: ${message.attributes}`);
+            // Acknowledge the message after processing it
+            message.ack();
+        }
+        subscription.on('message', messageHandler);
+        // Optional: handle errors.
+        subscription.on('error', error => {
+            console.error('Error receiving message:', error);
+        });
+    }
+
 
     // TODO: Challenge task, draw out a system diagram for this project (10 minutes and explain why you have included each component and what you would do if you had more time)
     // 1. Feature requirements:
