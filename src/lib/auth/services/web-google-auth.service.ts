@@ -102,28 +102,67 @@ export class WebGoogleAuthService implements IGoogleAuthService {
     });
   }
 
-  async handleOAuthCallback({ code }: { code: string }): Promise<void> {
-    if (!this.oAuth2Client) {
-      this.oAuth2Client = new OAuth2Client({
-        clientId: config.googleClientId,
-        clientSecret: config.googleClientSecret,
-        redirectUri: config.googleRedirectUri,
-      });
-    }
+  async handleOAuthCallback({ accessToken, refreshToken, code }: { accessToken?: string; refreshToken?: string; code?: string }): Promise<void> {
+    if (code) {
+      // Existing code-based flow
+      if (!this.oAuth2Client) {
+        this.oAuth2Client = new OAuth2Client({
+          clientId: config.googleClientId,
+          clientSecret: config.googleClientSecret,
+          redirectUri: config.googleRedirectUri,
+        });
+      }
 
-    const { tokens } = await this.oAuth2Client.getToken(code);
-    this.oAuth2Client.setCredentials(tokens);
-    const credentials = tokens;
-    if (!credentials.access_token || !credentials.refresh_token || !credentials.expiry_date) {
-      throw new Error('No credentials found');
+      const { tokens } = await this.oAuth2Client.getToken(code);
+      this.oAuth2Client.setCredentials(tokens);
+      const credentials = tokens;
+      if (!credentials.access_token || !credentials.refresh_token || !credentials.expiry_date) {
+        throw new Error('No credentials found');
+      }
+      this.credentials = {
+        accessToken: credentials.access_token,
+        refreshToken: credentials.refresh_token,
+        expiryDate: credentials.expiry_date ? new Date(credentials.expiry_date) : undefined
+      };
+      await this.saveSessionToken();
+    } else if (accessToken) {
+      // Direct token flow
+      if (!this.oAuth2Client) {
+        this.oAuth2Client = new OAuth2Client({
+          clientId: config.googleClientId,
+          clientSecret: config.googleClientSecret,
+          redirectUri: config.googleRedirectUri,
+        });
+      }
+
+      const credentials: any = {
+        access_token: accessToken,
+        expiry_date: Date.now() + 3600 * 1000, // Approximate expiry
+      };
+
+      // Only add refresh token if it exists
+      if (refreshToken) {
+        credentials.refresh_token = refreshToken;
+      } else if (this.credentials?.refreshToken) {
+        // Use existing refresh token if available
+        credentials.refresh_token = this.credentials.refreshToken;
+        this.logger.warn('Using existing refresh token as none was provided');
+      } else {
+        this.logger.warn('No refresh token available. Token will expire in 1 hour.');
+      }
+
+      this.oAuth2Client.setCredentials(credentials);
+
+      this.credentials = {
+        accessToken,
+        refreshToken: refreshToken || this.credentials?.refreshToken,
+        expiryDate: new Date(Date.now() + 3600 * 1000)
+      };
+
+      await this.saveSessionToken();
+    } else {
+      throw new Error('Either code or access token must be provided');
     }
-    this.credentials = {
-      accessToken: credentials.access_token,
-      refreshToken: credentials.refresh_token,
-      expiryDate: credentials.expiry_date ? new Date(credentials.expiry_date) : undefined
-    };
-    await this.saveSessionToken();
-    // this.logger.info('OAuth2 tokens received and set');
   }
 
   async saveSessionToken(): Promise<void> {
@@ -141,14 +180,6 @@ export class WebGoogleAuthService implements IGoogleAuthService {
     });
     await fs.writeFile(config.tokenPath.web, payload);
     this.logger.info('Token stored to', config.tokenPath.web);
-    // const expiryDate = client.credentials.expiry_date;
-    // const accessToken = client.credentials.access_token;
-    // const refreshToken = client.credentials.refresh_token;
-    // if (accessToken) {
-    //     await this.redis.set(this.oauth.token.web, accessToken);
-    //     await this.redis.set(this.oauth.expiry.web, expiryDate?.toString() || "0");
-    //     await this.redis.set(this.oauth.refreshToken.web, refreshToken || '');
-    // }
   }
 
   async refreshTokenIfNeeded(): Promise<GoogleAuthCredentials> {

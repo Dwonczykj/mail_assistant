@@ -1,7 +1,6 @@
 import { Controller, Get, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { Response } from 'express';
-import Redis from 'ioredis';
+import { Response, Request } from 'express';
 import { AuthService } from './auth.service';
 
 @Controller('auth')
@@ -10,24 +9,27 @@ export class AuthController {
 
     @Get('google')
     @UseGuards(AuthGuard('google'))
-    async googleAuth(@Res() res: Response) {
-        const authUrl = await this.authService.getGoogleAuthUrl();
-        if (authUrl === "ALREADY_AUTHENTICATED") {
-            res.send("Already authenticated, no further action required.");
-        } else {
-            res.redirect(authUrl);
-        }
+    async googleAuth() {
+        // Passport handles the redirect
     }
 
     @Get('google/callback')
     @UseGuards(AuthGuard('google'))
     async googleAuthCallback(
         @Req() req: Request,
-        @Query('code') code: string,
         @Res() res: Response,
     ) {
-        // const authenticatedUser = req.user;
-        await this.authService.handleGoogleCallback(code, "daemon");
-        res.send('Authentication successful! You can close this window.');
+        try {
+            // The user data is available in req.user after successful authentication
+            const user = req.user;
+
+            // Handle the callback with the auth service
+            await this.authService.handleGoogleCallback(user);
+
+            res.send('Authentication successful! You can close this window.');
+        } catch (error) {
+            console.error('Authentication error:', error);
+            res.status(500).send('Authentication failed. Please try again.');
+        }
     }
 } 

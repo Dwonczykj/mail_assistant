@@ -45,7 +45,7 @@ export interface IGoogleAuthService {
   /**
    * Handle the OAuth callback
    */
-  handleOAuthCallback({ code }: { code: string }): Promise<void>;
+  handleOAuthCallback(whatever: any): Promise<void>;
 
   /**
    * Save the session token

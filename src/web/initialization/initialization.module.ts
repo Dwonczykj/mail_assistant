@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { GmailInitService } from './gmail-init.service';
+// import { GmailInitService } from './gmail-init.service';
 import { WinstonLogger } from '../../lib/logger/WinstonLogger';
 import { CategoriserFactory } from '../../Categoriser/CategoriserFactory';
 import { DatabaseInitializerService } from '../../data/data-source';
@@ -18,7 +18,7 @@ import { WebGoogleAuthService } from '../../lib/auth/services/web-google-auth.se
 
 @Module({
     providers: [
-        GmailInitService,
+        // GmailInitService,
         DatabaseInitializerService,
         WebGoogleAuthService,
         DesktopGoogleAuthService,

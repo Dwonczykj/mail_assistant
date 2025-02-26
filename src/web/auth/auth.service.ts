@@ -35,19 +35,27 @@ export class AuthService {
         return authUrl;
     }
 
-    async handleGoogleCallback(code: string, sender: string): Promise<void> {
-        this.logger.debug(`Handling OAuth callback with code: ${code}`);
+    async handleGoogleCallback(user: any): Promise<void> {
+        try {
+            // Extract tokens from the user object
+            const { accessToken, refreshToken } = user;
 
-        // Handle OAuth callback
-        await this.googleAuthService.handleOAuthCallback({ code });
+            this.logger.debug(`Received tokens - Access Token: ${accessToken ? 'present' : 'missing'}, Refresh Token: ${refreshToken ? 'present' : 'missing'}`);
 
-        // // Set up watch after authentication
-        // try {
-        //     await this.gmailClient.listenForIncomingEmails();
-        //     this.logger.info('Successfully set up Gmail watch from handleGoogleCallback AuthService');
-        // } catch (error) {
-        //     this.logger.error('Failed to set up Gmail watch after authentication', { error });
-        //     throw error;
-        // }
+            if (!refreshToken) {
+                this.logger.warn('No refresh token received. User may need to revoke access and try again.');
+            }
+
+            // Use the tokens to authenticate with your service
+            await this.googleAuthService.handleOAuthCallback({
+                accessToken,
+                refreshToken
+            });
+
+            // Additional logic after successful authentication
+        } catch (error) {
+            this.logger.error('Failed to handle Google callback', error);
+            throw error;
+        }
     }
 } 

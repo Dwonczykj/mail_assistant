@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { Module, DynamicModule } from '@nestjs/common';
 import { AuthModule } from './auth/auth.module';
 import { ConfigModule } from '@nestjs/config';
-import { GmailInitService } from './initialization/gmail-init.service';
+// import { GmailInitService } from './initialization/gmail-init.service';
 import { createRedisClient } from '../lib/redis/RedisProvider';
 import { WinstonLogger } from '../lib/logger/WinstonLogger';
 import { GmailWebhookController } from './controllers/gmail-webhook.controller';
@@ -54,10 +54,10 @@ export class AppModule {
                     provide: 'GoogleAuthFactoryService',
                     useClass: GoogleAuthFactoryService
                 },
-                {
-                    provide: 'GmailInitService',
-                    useClass: GmailInitService
-                },
+                // {
+                //     provide: 'GmailInitService',
+                //     useClass: GmailInitService
+                // },
                 EmailServiceManager,
                 {
                     provide: 'EmailServiceManager',

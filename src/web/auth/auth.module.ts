@@ -14,21 +14,26 @@ import { DatabaseInitializerService } from '../../data/data-source';
 import { GmailListenerService } from '../../EmailService/GmailListener';
 import { GmailService } from '../../EmailService/GmailService';
 import { EmailServiceManager } from '../../EmailService/EmailServiceManager';
-import { GmailInitService } from '../initialization/gmail-init.service';
+// import { GmailInitService } from '../initialization/gmail-init.service';
 import { CategoriserFactory } from '../../Categoriser/CategoriserFactory';
 import { AuthEnvironment, GoogleAuthFactoryService } from '../../lib/auth/services/google-auth-factory.service';
 import { WebGoogleAuthService } from '../../lib/auth/services/web-google-auth.service';
 import { DesktopGoogleAuthService } from '../../lib/auth/services/desktop-google-auth.service';
+import { GoogleStrategy } from './strategies/google.strategy';
+import { PassportModule } from '@nestjs/passport';
 
 @Module({})
 export class AuthModule {
     static forRoot(environment: AuthEnvironment): DynamicModule {
         return {
             module: AuthModule,
+            imports: [
+                PassportModule.register({ defaultStrategy: 'google' }),
+            ],
             controllers: [AuthController],
             providers: [
                 AuthService,
-                GmailInitService,
+                // GmailInitService,
                 DatabaseInitializerService,
                 GoogleAuthFactoryService,
                 WebGoogleAuthService,
@@ -96,7 +101,8 @@ export class AuthModule {
                 {
                     provide: 'IFyxerActionRepository',
                     useClass: FyxerActionRepository
-                }
+                },
+                GoogleStrategy,
             ],
             exports: [
                 AuthService,
