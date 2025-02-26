@@ -22,6 +22,10 @@ import { GoogleAuthModule } from '../lib/auth/google-auth.module';
 import { AuthEnvironment, GoogleAuthFactoryService } from '../lib/auth/services/google-auth-factory.service';
 import { WebGoogleAuthService } from '../lib/auth/services/web-google-auth.service';
 import { DesktopGoogleAuthService } from '../lib/auth/services/desktop-google-auth.service';
+import { ExchangeWebhookController } from './controllers/exchange-webhook.controller';
+import { PubSubGmailSubscriptionPushProcessor } from './controllers/PubSubGmailSubscriptionPushProcessor.service';
+import { ExchangeEmailGraphAPIPushProcessor } from './controllers/ExchangeEmailGraphAPIPushProcessor.service';
+import { ExchangeEmailGraphAPIPubSubPublishProcessor } from './controllers/ExchangeEmailGraphAPIPubSubPublishProcessor.service';
 
 @Module({})
 export class AppModule {
@@ -110,9 +114,22 @@ export class AppModule {
                     provide: 'IFyxerActionRepository',
                     useClass: FyxerActionRepository
                 },
+                {
+                    provide: 'PubSubGmailSubscriptionPushProcessor',
+                    useClass: PubSubGmailSubscriptionPushProcessor
+                },
+                {
+                    provide: 'ExchangeEmailGraphAPIPushProcessor',
+                    useClass: ExchangeEmailGraphAPIPushProcessor
+                },
+                {
+                    provide: 'ExchangeEmailGraphAPIPubSubPublishProcessor',
+                    useClass: ExchangeEmailGraphAPIPubSubPublishProcessor
+                },
             ],
             controllers: [
-                GmailWebhookController
+                GmailWebhookController,
+                ExchangeWebhookController,
             ],
             exports: [
                 EmailServiceManager,

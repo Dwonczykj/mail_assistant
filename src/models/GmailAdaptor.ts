@@ -1,9 +1,9 @@
 import { Email } from "./Email";
-import { IAdaptorForEmails } from "./IAdaptorForEmail";
+import { IEmailAdaptor } from "./IAdaptorForEmail";
 import { gmail_v1 } from "googleapis";
 
 
-export class GmailAdaptor implements IAdaptorForEmails<gmail_v1.Schema$Message> {
+export class GmailAdaptor implements IEmailAdaptor<gmail_v1.Schema$Message> {
     public readonly messages: string[] = [];
     adapt(email: gmail_v1.Schema$Message): Email {
         // Extract email details required for categorisation.

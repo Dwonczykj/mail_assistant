@@ -1,10 +1,10 @@
 import { Email } from './Email';
-import { IAdaptorForEmails } from './IAdaptorForEmail';
+import { IEmailAdaptor } from './IAdaptorForEmail';
 
 /**
  * Adapts Microsoft Exchange email format to our internal Email model
  */
-export class ExchangeAdaptor implements IAdaptorForEmails<any> {
+export class ExchangeAdaptor implements IEmailAdaptor<any> {
     public readonly messages: string[] = [];
     /**
      * Adapts a Microsoft Exchange email message to our internal Email model

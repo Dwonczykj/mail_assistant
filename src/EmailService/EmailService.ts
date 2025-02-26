@@ -8,6 +8,7 @@ import { Injectable, Inject } from "@nestjs/common";
 import { IMailListener } from "./IMailListener";
 import { IReceiveOAuthClient } from "../lib/utils/IGoogleAuth";
 import { OAuth2Client } from "google-auth-library";
+import { IEmailAdaptor } from "../models/IAdaptorForEmail";
 
 @Injectable()
 export abstract class EmailService implements IAmEmailService {
@@ -28,6 +29,8 @@ export abstract class EmailService implements IAmEmailService {
     public get authenticated(): Promise<boolean> {
         return this.emailClient.authenticated;
     }
+
+    public abstract getEmailAdaptor(): IEmailAdaptor<any>;
 
     /**
      * Categorises an email if not already labelled.

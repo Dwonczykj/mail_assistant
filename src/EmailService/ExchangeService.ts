@@ -8,24 +8,26 @@ import { IMailListener } from "./IMailListener";
 import { GmailAdaptor } from "../models/GmailAdaptor";
 import { IEmailAdaptor } from "../models/IAdaptorForEmail";
 import { gmail_v1 } from "googleapis";
+import { ExchangeClient } from "../Repository/ExchangeClient";
+import { ExchangeAdaptor } from "../models/ExchangeAdaptor";
 @Injectable()
-export class GmailService extends EmailService {
-    readonly name: string = "gmail";
+export class ExchangeService extends EmailService {
+    readonly name: string = "exchange";
 
     constructor(
         @Inject("ICategoriser") categoriser: ICategoriser,
         @Inject("ILogger") logger: ILogger,
-        @Inject("GmailClient") gmailClient: GmailClient,
-        @Inject("GmailListenerService") readonly listenerService: IMailListener,
+        @Inject("ExchangeClient") exchangeClient: ExchangeClient,
+        @Inject("ExchangeListenerService") readonly listenerService: IMailListener,
     ) {
         super(
-            gmailClient,
+            exchangeClient,
             logger,
             categoriser,
         );
     }
 
-    public getEmailAdaptor(): IEmailAdaptor<gmail_v1.Schema$Message> {
-        return new GmailAdaptor();
+    public getEmailAdaptor(): IEmailAdaptor<any> {
+        return new ExchangeAdaptor();
     }
 }

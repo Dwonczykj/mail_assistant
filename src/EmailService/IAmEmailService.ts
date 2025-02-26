@@ -1,11 +1,13 @@
 import { Email } from "../models/Email";
 import { IMailListener } from "./IMailListener";
 import { IReceiveOAuthClient } from "../lib/utils/IGoogleAuth";
+import { IEmailAdaptor } from "../models/IAdaptorForEmail";
 
 export interface IAmEmailService extends IReceiveOAuthClient {
     readonly name: string;
     readonly listenerService: IMailListener;
 
+    getEmailAdaptor(): IEmailAdaptor<any>;
     fetchLastEmails({ count, lastNHours }: { count: number, lastNHours?: number }): Promise<Email[]>;
     categoriseEmail(email: Email): Promise<Email>;
     // // Draft Email
