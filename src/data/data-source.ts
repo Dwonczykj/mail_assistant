@@ -1,5 +1,6 @@
 import { DataSource } from "typeorm";
 import { FyxerAction } from "./entity/action";
+import { ProcessedObject } from "./entity/ProcessedObject";
 import path from "path";
 import { ILogger } from "../lib/logger/ILogger";
 import { Injectable, Inject, OnApplicationBootstrap, OnApplicationShutdown } from "@nestjs/common";
@@ -7,7 +8,7 @@ import { Injectable, Inject, OnApplicationBootstrap, OnApplicationShutdown } fro
 const AppDataSource = new DataSource({
     type: "sqlite",
     database: path.join(process.cwd(), "data", "fyxer.sqlite"),
-    entities: [FyxerAction],
+    entities: [FyxerAction, ProcessedObject],
     synchronize: true, // Be careful with this in production
     logging: true,
 })
@@ -15,8 +16,9 @@ const AppDataSource = new DataSource({
 @Injectable()
 export class DatabaseInitializerService implements OnApplicationBootstrap, OnApplicationShutdown {
     readonly dataSource: DataSource;
+    private isInitialized = false;
 
-    constructor( @Inject("ILogger") private readonly logger: ILogger) {
+    constructor(@Inject("ILogger") private readonly logger: ILogger) {
         this.dataSource = AppDataSource;
     }
 
@@ -29,18 +31,38 @@ export class DatabaseInitializerService implements OnApplicationBootstrap, OnApp
     }
 
     async initialize() {
-        await this.dataSource.initialize()
-            .then(() => {
-                this.logger.info("Database connection initialized");
-            })
-            .catch((error) => this.logger.error("Error initializing database:", error));
+        if (this.isInitialized) {
+            this.logger.info("Database connection already initialized, skipping");
+            return;
+        }
+
+        if (this.dataSource.isInitialized) {
+            this.logger.info("DataSource already initialized, skipping");
+            this.isInitialized = true;
+            return;
+        }
+
+        try {
+            await this.dataSource.initialize();
+            this.isInitialized = true;
+            this.logger.info("Database connection initialized");
+        } catch (error) {
+            this.logger.error("Error initializing database:", { error: `${error}` });
+        }
     }
 
     async destroy() {
-        await this.dataSource.destroy()
-            .then(() => {
-                this.logger.info("Database connection destroyed");
-            })
-            .catch((error) => this.logger.error("Error destroying database:", error));
+        if (!this.isInitialized) {
+            this.logger.info("Database connection not initialized, nothing to destroy");
+            return;
+        }
+
+        try {
+            await this.dataSource.destroy();
+            this.isInitialized = false;
+            this.logger.info("Database connection destroyed");
+        } catch (error) {
+            this.logger.error("Error destroying database:", { error: `${error}` });
+        }
     }
 }

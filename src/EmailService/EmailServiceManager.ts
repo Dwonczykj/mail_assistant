@@ -11,6 +11,21 @@ import { IGetOAuthClient, IReceiveOAuthClient } from "../lib/utils/IGoogleAuth";
 import { GoogleAuthFactoryService, AuthEnvironment } from '../lib/auth/services/google-auth-factory.service';
 import { IGoogleAuthService } from '../lib/auth/interfaces/google-auth.interface';
 
+class BulkProcessors {
+    constructor(private readonly emailRepository: IMockEmailRepository) { }
+    async saveEmailsProcessor(emailTuples: { email: Email, service: IAmEmailService }[]): Promise<{ email: Email, service: IAmEmailService }[]> {
+        await this.emailRepository.saveEmails(emailTuples);
+        return emailTuples;
+    }
+}
+
+class UnitProcessors {
+    async labelEmailProcessor(email: Email, service: IAmEmailService): Promise<{ email: Email, service: IAmEmailService }> {
+        const labelledEmail = await service.categoriseEmail(email);
+        return Promise.resolve({ email: labelledEmail, service: service });
+    }
+}
+
 @Injectable()
 export class EmailServiceManager implements IGetOAuthClient {
     private emailServices: IAmEmailService[] = [];
@@ -76,35 +91,52 @@ export class EmailServiceManager implements IGetOAuthClient {
         }
     }
 
-    // Both of these methods are examplle methods to demonstrate that the functionality of connecting to emails is working.
-    public async fetchAndLabelLastEmails({ serviceName = "*", lastNHours, count }: { serviceName?: string, lastNHours?: number, count: number }): Promise<Email[]> {
-        this.logger.info(`Fetching and labeling last ${count} emails from ${serviceName}`);
+    public async fetchMail<T>({ processor, serviceName = "*", lastNHours, count, reapply = false }: { processor: (email: Email, service: IAmEmailService) => Promise<T>, serviceName?: string, lastNHours?: number, count: number, reapply?: boolean }): Promise<T[]> {
+        this.logger.debug(`Fetching last ${count} emails from ${serviceName}`);
         const emailServiceTuples = await this.lastNEmails({ serviceName, lastNHours, count });
-        const promises = emailServiceTuples.map(async ({ service, email }) => {
-            const categorisedEmail = await service.categoriseEmail(email);
-            return categorisedEmail;
-        });
-        // TODO: This needs to be refactored to push messages to a the event bus and we would then need to read from the event bus by subscribing to a topic from the email listeners which are registered in the services from the worker.
-        const listOfListOfCategorisedEmails = await Promise.all(promises);
-        // what is the synatax to flatten a list of lists?
-        const categorisedEmails = listOfListOfCategorisedEmails.flat();
-        this.logger.info(`Fetched ${categorisedEmails.length} emails from [${emailServiceTuples.map(obj => obj.service.name).join(", ")}]`);
-        return categorisedEmails;
+        if (!reapply) {
+            const seenObjects = await this.processedObjectRepo.findByTimeRange({
+                lastNHours,
+                objectType: ObjectType.EMAIL
+            });
+            const processingPromises = emailServiceTuples.filter(obj => !seenObjects.some(seenObj => seenObj.message_id === obj.email.messageId)).map(async ({ email, service }) => {
+                return processor(email, service);
+            });
+            this.logger.info(`Applying ${processor.name} to ${processingPromises.length} new emails.`);
+            return await Promise.all(processingPromises);
+        } else {
+            const processingPromises = emailServiceTuples.map(async ({ email, service }) => {
+                return processor(email, service);
+            });
+            this.logger.info(`ReApplying ${processor.name} to ${processingPromises.length} to new and seen emails.`);
+            return await Promise.all(processingPromises);
+        }
+    }
+
+    // Both of these methods are examplle methods to demonstrate that the functionality of connecting to emails is working.
+    public async fetchAndLabelLastEmails({ serviceName = "*", lastNHours, count, relabel = false }: { serviceName?: string, lastNHours?: number, count: number, relabel?: boolean }): Promise<Email[]> {
+        return this.fetchMail({ processor: (email, service) => service.categoriseEmail(email), serviceName, lastNHours, count, reapply: relabel });
     }
 
     public async fetchLastNEmails({ serviceName = "*", lastNHours, count }: { serviceName?: string, lastNHours?: number, count: number }): Promise<{ email: Email, service: IAmEmailService }[]> {
-        this.logger.info(`Fetching last ${count} emails from ${serviceName}`);
-        const emailServiceTuples = await this.lastNEmails({ serviceName, lastNHours, count });
-        for (const { email, service } of emailServiceTuples) {
-            // await this.categoriseEmail(email);
-            this.logger.debug(`Email: "${email.subject}" from Service: [${service.name}]`);
-        }
-        return emailServiceTuples;
+        return this.fetchMail({
+            processor: (email, service) => {
+                this.logger.debug(`Email: "${email.subject}" from Service: [${service.name}]`);
+                return Promise.resolve({ email: email, service: service });
+            }, serviceName, lastNHours, count
+        });
     }
 
+
+
+
     public async saveLastNEmails({ serviceName = "*", lastNHours, count }: { serviceName?: string, lastNHours?: number, count: number }): Promise<void> {
-        this.logger.info(`Fetching last ${count} emails from ${serviceName}`);
-        const emailServiceTuples = await this.lastNEmails({ serviceName, lastNHours, count });
+        const emailServiceTuples = await this.fetchMail({
+            processor: (email, service) => {
+                return Promise.resolve({ email: email, service: service });
+            }, serviceName, lastNHours, count, reapply: false
+        });
+
         await this.emailRepository.saveEmails(emailServiceTuples);
         this.logger.info(`Saved ${emailServiceTuples.length} emails to mock email repository`);
     }

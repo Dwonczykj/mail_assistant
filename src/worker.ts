@@ -41,7 +41,6 @@ async function main(): Promise<void> {
         await emailServiceManager.authenticate();
     }
 
-    await emailServiceManager.saveLastNEmails({ serviceName: "*", count: 10 });
     await emailServiceManager.fetchAndLabelLastEmails({ serviceName: "*", count: 10 });
     // Example daemon loop: replace this with actual daemon logic
     while (true) {

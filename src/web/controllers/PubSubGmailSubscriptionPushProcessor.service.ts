@@ -3,6 +3,7 @@ import { IProcessor } from '../../lib/utils/IProcessor';
 import { EmailServiceManager } from '../../EmailService/EmailServiceManager';
 import { ILogger } from '../../lib/logger/ILogger';
 import { ProcessedObjectRepository } from '../../Repository/ProcessedObjectRepository';
+import { ObjectType } from '../../data/entity/ProcessedObject';
 
 @Injectable()
 export class PubSubGmailSubscriptionPushProcessor implements IProcessor<any> {
@@ -31,7 +32,7 @@ export class PubSubGmailSubscriptionPushProcessor implements IProcessor<any> {
             project_id: email.threadId, // You might want to implement proper project ID logic
             thread_id: email.threadId,
             message_id: email.messageId,
-            type: 'email',
+            type: ObjectType.EMAIL,
             result: JSON.stringify(email),
             object_timestamp: new Date(email.timestamp)
         });

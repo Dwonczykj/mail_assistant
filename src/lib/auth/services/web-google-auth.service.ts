@@ -70,7 +70,7 @@ export class WebGoogleAuthService implements IGoogleAuthService {
   async authenticate(): Promise<OAuth2Client | null> {
     // For web app, authentication is typically handled by the auth controller
     // This method would be called after the OAuth flow completes
-    // TODO: HandleOAuthCallback with code to set the oAuth2Client
+    // TODO: HandleOAuthCallback with code to set the oAuth2Client - BUG atm is that we cant call this on startup as we need the request to redirect the user to google auth to then authenticate the request and save the token credentials.
     const token = this.oAuth2Client?.credentials;
     if (!token || !token.access_token || !token.refresh_token || !token.expiry_date) {
       throw new Error('No token found');

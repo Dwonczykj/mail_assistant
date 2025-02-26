@@ -146,10 +146,7 @@ export class GmailClient implements IEmailClient, IHaveGoogleClient<gmail_v1.Gma
                     topicName: topicName,
                 },
             });
-
-            //TODO: Also need to confirm webhook is working in webapi for pub/sub with this topicName
-            // TODO: Is there a web gui for pub/sub?
-            this.logger.info('Watch response:', { "response": res.data });
+            this.logger.info(`Watch Gmail response to topic: ${topicName} with expiration date: ${res.data.expiration ? new Date(Number.parseInt(res.data.expiration)).toLocaleString() : 'unknown'}`, { "response": res.data });
         } catch (error: any) {
             this.logger.error(`Failed to set up email watch for topic: ${topicName} with error: ${error}`, { "error": error.toString() });
             throw error;
@@ -202,7 +199,7 @@ export class GmailClient implements IEmailClient, IHaveGoogleClient<gmail_v1.Gma
     }): Promise<Email[]> {
         try {
             const query = `after:${lastNHours ? Math.floor(new Date(Date.now() - lastNHours * 60 * 60 * 1000).getTime() / 1000) : ''}`;
-            this.logger.info(`Fetching last ${count} emails from ${query}`);
+            this.logger.info(`Fetching last ${count} emails with query: "q=${query}"`);
             const listResponse = await this.httpGoogleClient!.users.messages.list({
                 userId: 'me',
                 maxResults: count,
