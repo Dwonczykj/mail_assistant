@@ -89,12 +89,55 @@ export class UserCredentialsService {
         }
     }
 
+    async saveUserCredentials(
+        userId: string,
+        provider: AuthProvider,
+        credentials: Partial<UserCredentials>
+    ): Promise<boolean> {
+        try {
+            const existingAuthUser = await this.authUserRepository.findOne({
+                where: {
+                    userId,
+                    provider
+                }
+            });
+
+            if (existingAuthUser) {
+                return this.updateUserCredentials(userId, provider, credentials);
+            }
+
+            const authUser = new AuthUser();
+            authUser.userId = userId;
+            authUser.provider = provider;
+
+            if (credentials.accessToken) {
+                authUser.accessToken = credentials.accessToken;
+            }
+
+            if (credentials.refreshToken) {
+                authUser.refreshToken = credentials.refreshToken;
+            }
+
+            if (credentials.expiryDate) {
+                authUser.expiryDate = credentials.expiryDate;
+            }
+
+            await this.authUserRepository.save(authUser);
+            return true;
+        } catch (error) {
+            this.logger.error(`Error updating user credentials: ${error}`, { error });
+            return false;
+        }
+    }
+
     async getProviderForService(serviceName: string): Promise<AuthProvider> {
         // Map service names to auth providers
         switch (serviceName.toLowerCase()) {
             case 'gmail':
                 return AuthProvider.GOOGLE;
-            // Add other mappings as needed
+            case 'exchange':
+                return AuthProvider.MICROSOFT;
+
             default:
                 throw new Error(`Unknown service: ${serviceName}`);
         }

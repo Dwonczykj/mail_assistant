@@ -67,4 +67,8 @@ export class DatabaseInitializerService implements OnApplicationBootstrap, OnApp
             this.logger.error("Error destroying database:", { error: `${error}` });
         }
     }
+
+    public static getDataSource(): DataSource {
+        return AppDataSource;
+    }
 }

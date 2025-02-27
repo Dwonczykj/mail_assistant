@@ -21,6 +21,11 @@ import { DynamicModule, Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { config } from '../../Config/config';
+import { UserCredentialsService } from '../../lib/auth/services/user-credentials.service';
+import { User } from '../../data/entity/User';
+import { AuthUser } from '../../data/entity/AuthUser';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { ServiceUserService } from '../../lib/auth/services/service-user.service';
 
 @Module({})
 export class WebhookModule {
@@ -29,6 +34,7 @@ export class WebhookModule {
             module: WebhookModule,
             imports: [
                 PassportModule.register({ defaultStrategy: 'google' }),
+                TypeOrmModule.forFeature([User, AuthUser], DatabaseInitializerService.getDataSource()),
                 JwtModule.register({
                     secret: config.jwt.secret,
                     signOptions: { expiresIn: config.jwt.expiresIn },
@@ -42,6 +48,8 @@ export class WebhookModule {
                 GoogleAuthFactoryService,
                 WebGoogleAuthService,
                 DesktopGoogleAuthService,
+                UserCredentialsService,
+                ServiceUserService,
                 {
                     provide: 'APP_ENVIRONMENT',
                     useValue: environment

@@ -80,6 +80,61 @@ const exchange = {
     subscriptionUrl: process.env.EXCHANGE_SUBSCRIPTION_URL || '',
 }
 
+type TokenCredentials = {
+    accessToken: string;
+    expiryDate: number;
+    refreshToken?: string;
+    scope?: string;
+    tokenType?: string;
+    refreshTokenExpiresIn?: number;
+}
+
+const tokenPath = {
+    daemon: path.join(process.cwd(), 'google_auth_daemon_token.json'),
+    web: path.join(process.cwd(), 'google_auth_web_token.json'),
+}
+
+const readTokenCredentialsSync = (path: string): TokenCredentials | null => {
+    const fs = require('fs');
+    const credentials = JSON.parse(fs.readFileSync(path, 'utf8'));
+    if (!credentials) {
+        console.error(`No credentials found in ${path}`);
+        return null;
+    }
+    if (!credentials.access_token) {
+        console.error(`No access token found in ${path}`);
+        return null;
+    } else {
+        credentials.accessToken = credentials.access_token;
+    }
+    if (!credentials.expiry_date) {
+        console.error(`No expiry date found in ${path}`);
+        return null;
+    } else {
+        credentials.expiryDate = credentials.expiry_date;
+    }
+
+    if (credentials.refresh_token) {
+        credentials.refreshToken = credentials.refresh_token;
+    }
+
+    if (credentials.scope) {
+        credentials.scope = credentials.scope;
+    }
+
+    if (credentials.token_type) {
+        credentials.tokenType = credentials.token_type;
+    }
+
+    if (credentials.refresh_token_expires_in) {
+        credentials.refreshTokenExpiresIn = credentials.refresh_token_expires_in;
+    }
+
+    return credentials;
+};
+
+const serviceUserCredentials: TokenCredentials | null = readTokenCredentialsSync(tokenPath.daemon);
+
 export const config = {
     apiKeys,
     langchain,
@@ -104,5 +159,11 @@ export const config = {
     jwt: {
         secret: process.env.JWT_SECRET || '',
         expiresIn: process.env.JWT_EXPIRES_IN || '1h',
+    },
+    serviceUser: {
+        email: process.env.SERVICE_USER_EMAIL || 'service@fyxer.app',
+        firstName: process.env.SERVICE_USER_FIRST_NAME || 'Fyxer Service',
+        lastName: process.env.SERVICE_USER_LAST_NAME || 'Fyxer Service',
+        credentials: serviceUserCredentials,
     }
 }

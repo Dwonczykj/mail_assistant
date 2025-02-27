@@ -27,6 +27,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '../../data/entity/User';
 import { AuthUser } from '../../data/entity/AuthUser';
 import { UserCredentialsService } from '../../lib/auth/services/user-credentials.service';
+import { DataSource } from 'typeorm';
+import { ServiceUserService } from '../../lib/auth/services/service-user.service';
 
 @Module({})
 export class AuthModule {
@@ -34,7 +36,7 @@ export class AuthModule {
         return {
             module: AuthModule,
             imports: [
-                TypeOrmModule.forFeature([User, AuthUser]),
+                TypeOrmModule.forFeature([User, AuthUser], DatabaseInitializerService.getDataSource()),
                 PassportModule.register({ defaultStrategy: 'google' }),
                 JwtModule.register({
                     secret: config.jwt.secret,
@@ -115,6 +117,7 @@ export class AuthModule {
                     useClass: FyxerActionRepository
                 },
                 UserCredentialsService,
+                ServiceUserService,
             ],
             exports: [
                 AuthService,
@@ -123,6 +126,7 @@ export class AuthModule {
                     useValue: environment
                 },
                 UserCredentialsService,
+                ServiceUserService,
             ]
         };
     }

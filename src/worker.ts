@@ -36,10 +36,7 @@ async function main(): Promise<void> {
     logger.info("Worker started");
 
     const emailServiceManager = appContext.get(EmailServiceManager);
-
-    if (!(await emailServiceManager.authenticated)) {
-        await emailServiceManager.authenticate();
-    }
+    await emailServiceManager.initializeWithServiceUser();
 
     await emailServiceManager.fetchAndLabelLastEmails({ serviceName: "*", count: 10 });
     // Example daemon loop: replace this with actual daemon logic

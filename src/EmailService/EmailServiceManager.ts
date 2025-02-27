@@ -13,6 +13,7 @@ import { IGoogleAuthService } from '../lib/auth/interfaces/google-auth.interface
 import { UserCredentialsService, UserCredentials } from '../lib/auth/services/user-credentials.service';
 import { AuthProvider } from '../data/entity/AuthUser';
 import { config } from "../Config/config";
+import { ServiceUserService } from '../lib/auth/services/service-user.service';
 
 class BulkProcessors {
     constructor(private readonly emailRepository: IMockEmailRepository) { }
@@ -43,6 +44,7 @@ export class EmailServiceManager implements IGetOAuthClient {
         private readonly googleAuthFactoryService: GoogleAuthFactoryService,
         @Inject('APP_ENVIRONMENT') private readonly environment: AuthEnvironment,
         private readonly userCredentialsService: UserCredentialsService,
+        private readonly serviceUserService: ServiceUserService,
     ) {
         this.googleAuthService = this.googleAuthFactoryService.getAuthService(this.environment);
         this.logger.info(`EmailServiceManager created with auth service: ${this.googleAuthService.constructor.name} in environment: ${this.environment}`);
@@ -167,6 +169,15 @@ export class EmailServiceManager implements IGetOAuthClient {
 
     // Existing authenticate method with modifications to use user credentials
     public async authenticate(): Promise<OAuth2Client | null> {
+        // If no current user is set, try to use service user
+        if (!this.currentUserId && this.environment === AuthEnvironment.DESKTOP) {
+            try {
+                await this.initializeWithServiceUser();
+            } catch (error) {
+                this.logger.error(`Failed to initialize with service user: ${error}`, { error });
+            }
+        }
+
         // If we have a current user, try to use their credentials
         if (this.currentUserId) {
             try {
@@ -290,6 +301,7 @@ export class EmailServiceManager implements IGetOAuthClient {
 
     private async lastNEmails({ serviceName = "*", lastNHours, count }: { serviceName?: string, lastNHours?: number, count: number }): Promise<{ email: Email, service: IAmEmailService }[]> {
         const services = serviceName === "*" ? this.emailServices : [await this.getEmailService(serviceName)];
+        // const serviceToAuthMaps = new Map(services.map(service => [service, service instanceof GmailService ? service.emailClientAuthenticationModule : null]));
         const promises = services.map(async service => ({ service, emails: await service.fetchLastEmails({ count, lastNHours }) }));
         // TODO: This needs to be refactored to push messages to a the event bus and we would then need to read from the event bus by subscribing to a topic from the email listeners which are registered in the services from the worker.
         const listOfListOfEmails = await Promise.all(promises);
@@ -365,5 +377,21 @@ export class EmailServiceManager implements IGetOAuthClient {
     async someGmailOperation(): Promise<void> {
         await this.ensureAuthenticated('gmail');
         // Now perform the operation with valid credentials
+    }
+
+    public async initializeWithServiceUser(): Promise<void> {
+        try {
+            const serviceUserId = await this.serviceUserService.getServiceUserId();
+            this.setCurrentUser(serviceUserId);
+
+            // Try to set credentials for each service
+            for (const service of this.emailServices) {
+                await this.setCredentialsForService(service.name, serviceUserId);
+            }
+
+            this.logger.info(`Initialized EmailServiceManager with service user: ${serviceUserId}`);
+        } catch (error) {
+            this.logger.error('Failed to initialize with service user:', { error });
+        }
     }
 }   

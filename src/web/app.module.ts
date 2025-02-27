@@ -27,6 +27,7 @@ import { PubSubGmailSubscriptionPushProcessor } from './controllers/PubSubGmailS
 import { ExchangeEmailGraphAPIPushProcessor } from './controllers/ExchangeEmailGraphAPIPushProcessor.service';
 import { ExchangeEmailGraphAPIPubSubPublishProcessor } from './controllers/ExchangeEmailGraphAPIPubSubPublishProcessor.service';
 import { WebhookModule } from './webhook/webhook.module';
+import { TypeOrmModule } from '@nestjs/typeorm';
 
 @Module({})
 export class AppModule {
@@ -34,6 +35,7 @@ export class AppModule {
         return {
             module: AppModule,
             imports: [
+                TypeOrmModule.forRoot(DatabaseInitializerService.getDataSource().options),
                 ConfigModule.forRoot({
                     isGlobal: true,
                 }),
