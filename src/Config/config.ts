@@ -101,4 +101,8 @@ export const config = {
     googleClientId: google.clientId,
     googleClientSecret: google.clientSecret,
     googleRedirectUri: google.redirectUri,
+    jwt: {
+        secret: process.env.JWT_SECRET || '',
+        expiresIn: process.env.JWT_EXPIRES_IN || '1h',
+    }
 }

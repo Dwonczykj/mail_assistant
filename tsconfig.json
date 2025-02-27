@@ -25,7 +25,9 @@
         ] // Include Node.js globals.
     },
     "include": [
-        "src"
+        "src",
+        "test/generate-test-token.ts",
+        "test/gmail-webhook.test.ts"
     ],
     "exclude": [
         "node_modules",

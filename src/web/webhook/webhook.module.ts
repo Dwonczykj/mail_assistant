@@ -1,50 +1,42 @@
-import { Module, DynamicModule } from '@nestjs/common';
-import { AuthController } from './auth.controller';
-import { AuthService } from './auth.service';
-import Redis from 'ioredis';
-import { ILogger } from '../../lib/logger/ILogger';
-import { WinstonLogger as Logger, WinstonLogger } from '../../lib/logger/WinstonLogger';
-import { createRedisClient } from '../../lib/redis/RedisProvider';
-import { GoogleAuthForWeb } from '../../lib/utils/gmailAuth';
-import { GmailClient } from '../../Repository/GmailClient';
-import { FyxerActionRepository } from '../../Repository/FyxerActionRepository';
+import { WebhookController } from './webhook.controller';
+import { EmailServiceManager } from '../../EmailService/EmailServiceManager';
+import { GmailService } from '../../EmailService/GmailService';
+import { GoogleAuthFactoryService } from '../../lib/auth/services/google-auth-factory.service';
 import { ProcessedObjectRepository } from '../../Repository/ProcessedObjectRepository';
-import { MockEmailRepository } from '../../Repository/MockEmailRepository';
+import { CategoriserFactory } from '../../Categoriser/CategoriserFactory';
 import { DatabaseInitializerService } from '../../data/data-source';
 import { GmailListenerService } from '../../EmailService/GmailListener';
-import { GmailService } from '../../EmailService/GmailService';
-import { EmailServiceManager } from '../../EmailService/EmailServiceManager';
-// import { GmailInitService } from '../initialization/gmail-init.service';
-import { CategoriserFactory } from '../../Categoriser/CategoriserFactory';
-import { AuthEnvironment, GoogleAuthFactoryService } from '../../lib/auth/services/google-auth-factory.service';
-import { WebGoogleAuthService } from '../../lib/auth/services/web-google-auth.service';
 import { DesktopGoogleAuthService } from '../../lib/auth/services/desktop-google-auth.service';
-import { GoogleStrategy } from './strategies/google.strategy';
-import { PassportModule } from '@nestjs/passport';
+import { WebGoogleAuthService } from '../../lib/auth/services/web-google-auth.service';
+import { WinstonLogger } from '../../lib/logger';
+import { createRedisClient } from '../../lib/redis/RedisProvider';
+import { GoogleAuthForWeb } from '../../lib/utils/gmailAuth';
+import { FyxerActionRepository } from '../../Repository/FyxerActionRepository';
+import { GmailClient } from '../../Repository/GmailClient';
+import { MockEmailRepository } from '../../Repository/MockEmailRepository';
+import { AuthService } from '../auth/auth.service';
+import { GoogleStrategy } from '../auth/strategies/google.strategy';
+import { AuthEnvironment } from '../../lib/auth/services/google-auth-factory.service';
+import { DynamicModule, Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
 import { config } from '../../Config/config';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { User } from '../../data/entity/User';
-import { AuthUser } from '../../data/entity/AuthUser';
-import { UserCredentialsService } from '../../lib/auth/services/user-credentials.service';
 
 @Module({})
-export class AuthModule {
+export class WebhookModule {
     static forRoot(environment: AuthEnvironment): DynamicModule {
         return {
-            module: AuthModule,
+            module: WebhookModule,
             imports: [
-                TypeOrmModule.forFeature([User, AuthUser]),
                 PassportModule.register({ defaultStrategy: 'google' }),
                 JwtModule.register({
                     secret: config.jwt.secret,
                     signOptions: { expiresIn: config.jwt.expiresIn },
                 }),
             ],
-            controllers: [AuthController],
+            controllers: [WebhookController],
             providers: [
                 AuthService,
-                GoogleStrategy,
                 // GmailInitService,
                 DatabaseInitializerService,
                 GoogleAuthFactoryService,
@@ -114,16 +106,24 @@ export class AuthModule {
                     provide: 'IFyxerActionRepository',
                     useClass: FyxerActionRepository
                 },
-                UserCredentialsService,
-            ],
-            exports: [
-                AuthService,
+                GoogleStrategy,
+
                 {
-                    provide: 'APP_ENVIRONMENT',
-                    useValue: environment
+                    provide: 'EmailServiceManager',
+                    useClass: EmailServiceManager,
                 },
-                UserCredentialsService,
-            ]
+                {
+                    provide: 'GmailService',
+                    useClass: GmailService,
+                },
+                {
+                    provide: 'ProcessedObjectRepository',
+                    useClass: ProcessedObjectRepository,
+                },
+                GoogleAuthFactoryService,
+
+            ],
         };
     }
-} 
+}
+

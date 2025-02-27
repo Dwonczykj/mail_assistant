@@ -163,6 +163,15 @@ export class DesktopGoogleAuthService implements IGoogleAuthService {
     // this.logger.info('OAuth2 tokens received and set');
   }
 
+  async needsTokenRefresh(): Promise<boolean> {
+    if (!this.credentials) {
+      return true;
+    }
+    const now = Date.now();
+    const expiryTime = this.credentials.expiryDate?.getTime() || 0;
+    return expiryTime - now < 5 * 60 * 1000;
+  }
+
   async saveSessionToken(): Promise<void> {
     const fs = await import('fs/promises');
     const content = await fs.readFile(config.credentialsPath.daemon, 'utf8');

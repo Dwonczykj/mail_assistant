@@ -32,9 +32,9 @@ async function executeCommand(command: string): Promise<void> {
         if (stdout) console.log(stdout);
 
         // Check for specific success messages
+        const successMessages = ['Updated IAM policy', 'already exists', 'Created subscription', 'Created topic'];
         if (stderr) {
-            if (stderr.includes('Updated IAM policy') ||
-                stderr.includes('already exists')) {
+            if (successMessages.some(message => stderr.includes(message))) {
                 console.log(stderr); // This is actually a success message
                 return;
             }
@@ -61,13 +61,22 @@ async function executeCommand(command: string): Promise<void> {
 }
 
 async function updateWebhook({ topicName, subscriptionName, webhookSubPath }: { topicName: string, subscriptionName: string, webhookSubPath: string }): Promise<void> {
+    let ngrokUrl: string = "";
     try {
-        const ngrokUrl = await getNgrokUrl();
+        ngrokUrl = await getNgrokUrl();
         console.log(`Found ngrok URL: ${ngrokUrl}`);
-
         // Create topic if it doesn't exist
         await executeCommand(`gcloud pubsub topics create ${topicName.split('/').pop()}`);
+    } catch (error) {
+        if (error instanceof Error && error.message.includes('Created topic')) {
+            console.log('Topic already exists, continuing...');
+        } else {
+            console.error('Failed to update webhook:', error);
+            process.exit(1);
+        }
+    }
 
+    try {
         // TODO: Grant Exchange Permissin for Exchange ACCOUNT name intead of gmail-api-push@system.gserviceaccount.com
         // Grant Gmail permission
         await executeCommand(
@@ -75,34 +84,36 @@ async function updateWebhook({ topicName, subscriptionName, webhookSubPath }: { 
             --member="serviceAccount:gmail-api-push@system.gserviceaccount.com" \
             --role="roles/pubsub.publisher"`
         );
-
-        // Try to create subscription first
-        try {
-            await executeCommand(
-                `gcloud pubsub subscriptions create ${subscriptionName.split('/').pop()} \
-                --topic=${topicName.split('/').pop()} \
-                --push-endpoint=${ngrokUrl}/webhooks/${webhookSubPath}`
-            );
-        } catch (error: any) {
-            if (error.message.startsWith('Created subscription')) {
-                console.log('Subscription already exists, continuing...');
-            }
-            else if (error.message.includes('NOT_FOUND') || error.message.includes('ALREADY_EXISTS')) { // TODO: Check if error might actually contain something like "Subscription already exists" in CAPS
-                // If creation fails, try updating
-                await executeCommand(
-                    `gcloud pubsub subscriptions update ${subscriptionName.split('/').pop()} \
-                    --push-endpoint=${ngrokUrl}/webhooks/${webhookSubPath}`
-                );
-            } else {
-                throw error;
-            }
-        }
-
-        console.log(`Successfully configured Pub/Sub webhook for ${topicName}`);
     } catch (error) {
         console.error('Failed to update webhook:', error);
         process.exit(1);
     }
+
+
+    // Try to create subscription first
+    try {
+        await executeCommand(
+            `gcloud pubsub subscriptions create ${subscriptionName.split('/').pop()} \
+            --topic=${topicName.split('/').pop()} \
+            --push-endpoint=${ngrokUrl}/webhooks/${webhookSubPath}`
+        );
+    } catch (error: any) {
+        if (error.message.startsWith('Created subscription')) {
+            console.log('Subscription already exists, continuing...');
+        }
+        else if (error.message.includes('NOT_FOUND') || error.message.includes('ALREADY_EXISTS')) {
+            // If creation fails, try updating
+            await executeCommand(
+                `gcloud pubsub subscriptions update ${subscriptionName.split('/').pop()} \
+                --push-endpoint=${ngrokUrl}/webhooks/${webhookSubPath}`
+            );
+        } else {
+            throw error;
+        }
+    }
+
+    console.log(`Successfully configured Pub/Sub webhook for ${topicName}`);
+
 }
 
 const threads = [
@@ -118,4 +129,4 @@ const threads = [
     }
 ].map(kwargs => updateWebhook(kwargs));
 
-Promise.all(threads);
+Promise.all(threads); // TODO: 1. Run the webserver behind ngrok and publish this endpoint to the pubsub topic. 2. Send email to the gmail account to trigger the webhook. 3. Check if the webhook was triggered.

@@ -1,0 +1,21 @@
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant AuthController
+    participant GoogleStrategy
+    participant AuthService
+    participant EmailServiceManager
+    participant GmailListener
+
+    User->>Frontend: Initiates Google Auth
+    Frontend->>AuthController: GET /auth/google
+    AuthController->>GoogleStrategy: Redirects to Google OAuth
+    GoogleStrategy->>User: Google Login Page
+    User->>GoogleStrategy: Provides Credentials
+    GoogleStrategy->>AuthController: Callback with tokens
+    AuthController->>AuthService: Handle callback
+    AuthService->>AuthService: Generate JWT
+    AuthService->>Frontend: Return JWT Token
+    Frontend->>EmailServiceManager: API Request with JWT
+    Note over EmailServiceManager: Validates JWT
+    EmailServiceManager->>GmailListener: Register Listener

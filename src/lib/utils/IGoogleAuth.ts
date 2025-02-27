@@ -14,6 +14,7 @@ export interface IGoogleAuth {
 export interface IReceiveOAuthClient {
     authenticate({ oAuthClient }: { oAuthClient: OAuth2Client }): Promise<void>;
     get authenticated(): Promise<boolean>;
+    needsTokenRefresh(): Promise<boolean>;
 }
 
 export interface IGetOAuthClient {

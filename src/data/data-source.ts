@@ -1,6 +1,8 @@
 import { DataSource } from "typeorm";
 import { FyxerAction } from "./entity/action";
 import { ProcessedObject } from "./entity/ProcessedObject";
+import { User } from "./entity/User";
+import { AuthUser } from "./entity/AuthUser";
 import path from "path";
 import { ILogger } from "../lib/logger/ILogger";
 import { Injectable, Inject, OnApplicationBootstrap, OnApplicationShutdown } from "@nestjs/common";
@@ -8,7 +10,7 @@ import { Injectable, Inject, OnApplicationBootstrap, OnApplicationShutdown } fro
 const AppDataSource = new DataSource({
     type: "sqlite",
     database: path.join(process.cwd(), "data", "fyxer.sqlite"),
-    entities: [FyxerAction, ProcessedObject],
+    entities: [FyxerAction, ProcessedObject, User, AuthUser],
     synchronize: true, // Be careful with this in production
     logging: true,
 })

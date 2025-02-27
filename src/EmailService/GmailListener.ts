@@ -9,6 +9,7 @@ import { config } from "../Config/config";
 @Injectable()
 export class GmailListenerService implements IMailListener {
     private oAuthClient: OAuth2Client | null = null;
+    private active: boolean = false;
 
     constructor(@Inject(GmailClient) private readonly emailClient: GmailClient, @Inject("ILogger") private readonly logger: ILogger) { }
 
@@ -33,41 +34,36 @@ export class GmailListenerService implements IMailListener {
     }
 
     async start(): Promise<void> {
-        if (!(await this.emailClient.authenticated)) {
-            if (!this.oAuthClient) {
-                throw new Error("OAuth client not authenticated");
+        try {
+            if (!(await this.emailClient.authenticated)) {
+                if (!this.oAuthClient) {
+                    throw new Error("OAuth client not authenticated");
+                }
+                await this.emailClient.authenticate({ oAuthClient: this.oAuthClient });
             }
-            await this.emailClient.authenticate({ oAuthClient: this.oAuthClient });
+            await this.emailClient.listenForIncomingEmails();
+            this.active = true;
+            this.logger.info('Gmail listener started successfully');
+        } catch (error) {
+            this.logger.error('Failed to start Gmail listener', { error });
+            this.active = false;
+            throw error;
         }
-        await this.emailClient.listenForIncomingEmails();
     }
 
-    async stop(): Promise<void> { // TODO: Ensure this method is called when the app shuts down or when the service is stopped using a with block. like pythonic __enter__ and __exit__ methods. What is this called in NestJS?
-        await this.emailClient.killIncomingEmailListener();
+    async stop(): Promise<void> {
+        try {
+            await this.emailClient.killIncomingEmailListener();
+            this.active = false;
+            this.logger.info('Gmail listener stopped successfully');
+        } catch (error) {
+            this.logger.error('Failed to stop Gmail listener', { error });
+            throw error;
+        }
     }
 
-    /**
-     * Pulls messages from Pub/Sub and processes them.
-     * This method creates a Pub/Sub subscription, sets up a message handler, and listens for incoming messages.
-     * It logs each received message and acknowledges it after processing.
-     * 
-     * @returns {Promise<void>} A promise that resolves when the subscription is successfully set up.
-    **/
-    async pullMessagesFromPubSubLoop(): Promise<void> {
-        const pubsub = new PubSub();
-        const topicName = config.google.pubSubConfig.topicName;
-        const subscriptionName = config.google.pubSubConfig.subscriptionName;
-        const subscription = pubsub.subscription(subscriptionName);
-        const messageHandler = async (message: Message) => {
-            this.logger.info(`Received message[${message.id}]: ${message.data} \nwith attributes: ${message.attributes}`);
-            // Acknowledge the message after processing it
-            message.ack();
-        }
-        subscription.on('message', messageHandler);
-        // Optional: handle errors.
-        subscription.on('error', error => {
-            console.error('Error receiving message:', error);
-        });
+    public isActive(): boolean {
+        return this.active;
     }
 
 

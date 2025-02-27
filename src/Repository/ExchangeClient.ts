@@ -72,6 +72,10 @@ export class ExchangeClient implements IEmailClient, IHaveGoogleClient<any> {
         this.logger.info('Exchange client authenticated');
     }
 
+    public async needsTokenRefresh(): Promise<boolean> {
+        return this.googleAuthService.needsTokenRefresh();
+    }
+
     private async withLock<T>(operation: () => Promise<T>): Promise<T> {
         const unlock = await this.acquireLock();
         try {

@@ -30,6 +30,10 @@ export abstract class EmailService implements IAmEmailService {
         return this.emailClient.authenticated;
     }
 
+    public async needsTokenRefresh(): Promise<boolean> {
+        return this.emailClient.needsTokenRefresh();
+    }
+
     public abstract getEmailAdaptor(): IEmailAdaptor<any>;
 
     /**

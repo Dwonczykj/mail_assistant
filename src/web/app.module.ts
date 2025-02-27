@@ -26,6 +26,7 @@ import { ExchangeWebhookController } from './controllers/exchange-webhook.contro
 import { PubSubGmailSubscriptionPushProcessor } from './controllers/PubSubGmailSubscriptionPushProcessor.service';
 import { ExchangeEmailGraphAPIPushProcessor } from './controllers/ExchangeEmailGraphAPIPushProcessor.service';
 import { ExchangeEmailGraphAPIPubSubPublishProcessor } from './controllers/ExchangeEmailGraphAPIPubSubPublishProcessor.service';
+import { WebhookModule } from './webhook/webhook.module';
 
 @Module({})
 export class AppModule {
@@ -39,6 +40,7 @@ export class AppModule {
                 AuthModule.forRoot(environment),
                 // InitializationModule,
                 GoogleAuthModule,
+                WebhookModule.forRoot(environment),
             ],
             providers: [
                 // GmailInitService,

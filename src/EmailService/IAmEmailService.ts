@@ -10,6 +10,7 @@ export interface IAmEmailService extends IReceiveOAuthClient {
     getEmailAdaptor(): IEmailAdaptor<any>;
     fetchLastEmails({ count, lastNHours }: { count: number, lastNHours?: number }): Promise<Email[]>;
     categoriseEmail(email: Email): Promise<Email>;
+    needsTokenRefresh(): Promise<boolean>;
     // // Draft Email
     // draftEmail(email: Email): Promise<Email>;
 

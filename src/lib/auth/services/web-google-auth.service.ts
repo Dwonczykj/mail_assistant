@@ -72,12 +72,12 @@ export class WebGoogleAuthService implements IGoogleAuthService {
     // This method would be called after the OAuth flow completes
     // TODO: HandleOAuthCallback with code to set the oAuth2Client - BUG atm is that we cant call this on startup as we need the request to redirect the user to google auth to then authenticate the request and save the token credentials.
     const token = this.oAuth2Client?.credentials;
-    if (!token || !token.access_token || !token.refresh_token || !token.expiry_date) {
+    if (!token || !token.access_token || !token.expiry_date) {
       throw new Error('No token found');
     }
     this.credentials = {
       accessToken: token.access_token,
-      refreshToken: token.refresh_token,
+      refreshToken: token.refresh_token || undefined,
       expiryDate: token.expiry_date ? new Date(token.expiry_date) : undefined
     };
     this.saveCredentials(token);
@@ -100,6 +100,15 @@ export class WebGoogleAuthService implements IGoogleAuthService {
       scope: this.SCOPES,
       prompt: 'consent',
     });
+  }
+
+  async needsTokenRefresh(): Promise<boolean> {
+    if (!this.credentials) {
+      return true;
+    }
+    const now = Date.now();
+    const expiryTime = this.credentials.expiryDate?.getTime() || 0;
+    return expiryTime - now < 5 * 60 * 1000;
   }
 
   async handleOAuthCallback({ accessToken, refreshToken, code }: { accessToken?: string; refreshToken?: string; code?: string }): Promise<void> {

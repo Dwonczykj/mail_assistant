@@ -14,6 +14,7 @@ import { IGoogleAuth, IHaveGoogleClient, IReceiveOAuthClient } from '../lib/util
 import { Injectable, Inject } from '@nestjs/common';
 import { AuthEnvironment, GoogleAuthFactoryService } from '../lib/auth/services/google-auth-factory.service';
 import { IGoogleAuthService } from '../lib/auth/interfaces/google-auth.interface';
+import { Message, Subscription, PubSub } from '@google-cloud/pubsub';
 
 @Injectable()
 export class GmailClient implements IEmailClient, IHaveGoogleClient<gmail_v1.Gmail> {
@@ -27,7 +28,7 @@ export class GmailClient implements IEmailClient, IHaveGoogleClient<gmail_v1.Gma
     private labelCreationLock: Promise<void> = Promise.resolve();
     public readonly name: string = "gmail";
     private googleAuthService: IGoogleAuthService;
-
+    private pullPubSubSubscription: Subscription | null = null;
     public get httpGoogleClient(): gmail_v1.Gmail | null {
         return this._httpGoogleClient;
     }
@@ -56,7 +57,7 @@ export class GmailClient implements IEmailClient, IHaveGoogleClient<gmail_v1.Gma
     }
 
     public async authenticate({ oAuthClient }: { oAuthClient: OAuth2Client }): Promise<void> {
-        this.authClient = oAuthClient;
+        this.authClient = oAuthClient || new OAuth2Client();
         if (!this.authClient || !this.authClient.credentials.refresh_token) {
             const newCreds = await this.googleAuthService.refreshTokenIfNeeded();
             this.authClient.setCredentials({
@@ -107,6 +108,7 @@ export class GmailClient implements IEmailClient, IHaveGoogleClient<gmail_v1.Gma
         });
         this._httpGoogleClient = google.gmail({ version: 'v1', auth: this.authClient });
     }
+    
     /**
    * Listens for incoming emails using Gmail API's watch functionality.
    * It sets up push notifications on the "INBOX" by using a webhook/topic that is setup in the Google Cloud Pub/Sub console and routes to our WebAPI application.
@@ -146,9 +148,9 @@ export class GmailClient implements IEmailClient, IHaveGoogleClient<gmail_v1.Gma
                     topicName: topicName,
                 },
             });
-            this.logger.info(`Watch Gmail response to topic: ${topicName} with expiration date: ${res.data.expiration ? new Date(Number.parseInt(res.data.expiration)).toLocaleString() : 'unknown'}`, { "response": res.data });
+            this.logger.info(`✅👀 Watch added to Gmail: Push Gmails to Pub/Sub topic: ${topicName} with expiration date: ${res.data.expiration ? new Date(Number.parseInt(res.data.expiration)).toLocaleString() : 'unknown'}`, { "response": res.data });
         } catch (error: any) {
-            this.logger.error(`Failed to set up email watch for topic: ${topicName} with error: ${error}`, { "error": error.toString() });
+            this.logger.error(`❌👀 Failed to set up email watch for topic: ${topicName} with error: ${error}`, { "error": error.toString() });
             throw error;
         }
     }
@@ -183,11 +185,42 @@ export class GmailClient implements IEmailClient, IHaveGoogleClient<gmail_v1.Gma
                 userId: 'me',
             });
 
-            this.logger.info('Killed incoming email listener');
+            this.logger.info('✅🧹 Incoming email listener killed');
         } catch (error: any) {
-            this.logger.error(`Failed to kill incoming email listener with error: ${error}`, { "error": error.toString() });
+            this.logger.error(`❌🧹 Failed to kill incoming email listener with error: ${error}`, { "error": error.toString() });
             throw error;
         }
+        try {
+            await this.pullPubSubSubscription?.close();
+            this.logger.info('✅🧹 Pull Pub/Sub subscription closed');
+        } catch (error: any) {
+            this.logger.error(`❌🧹 Failed to close pull Pub/Sub subscription with error: ${error}`, { "error": error.toString() });
+            throw error;
+        }
+    }
+
+    /**
+     * Pulls messages from Pub/Sub and processes them.
+     * This method creates a Pub/Sub subscription, sets up a message handler, and listens for incoming messages.
+     * It logs each received message and acknowledges it after processing.
+     * 
+     * @returns {Promise<void>} A promise that resolves when the subscription is successfully set up.
+    **/
+    async pullMessagesFromPubSubLoop(): Promise<void> {
+        const pubsub = new PubSub();
+        const topicName = config.google.pubSubConfig.topicName;
+        const subscriptionName = config.google.pubSubConfig.subscriptionName;
+        this.pullPubSubSubscription = pubsub.subscription(subscriptionName);
+        const messageHandler = async (message: Message) => {
+            this.logger.info(`Received message[${message.id}]: ${message.data} \nwith attributes: ${message.attributes}`);
+            // Acknowledge the message after processing it
+            message.ack();
+        }
+        this.pullPubSubSubscription.on('message', messageHandler);
+        // Optional: handle errors.
+        this.pullPubSubSubscription.on('error', error => {
+            console.error('Error receiving message:', error);
+        });
     }
 
     public async fetchLastEmails({
@@ -198,6 +231,10 @@ export class GmailClient implements IEmailClient, IHaveGoogleClient<gmail_v1.Gma
         lastNHours?: number
     }): Promise<Email[]> {
         try {
+            if (!this.authClient || !this.httpGoogleClient) {
+                this.logger.error('Gmail client not authenticated');
+                await this.authenticate({ oAuthClient: this.authClient! });
+            }
             const query = `after:${lastNHours ? Math.floor(new Date(Date.now() - lastNHours * 60 * 60 * 1000).getTime() / 1000) : ''}`;
             this.logger.info(`Fetching last ${count} emails with query: "q=${query}"`);
             const listResponse = await this.httpGoogleClient!.users.messages.list({
@@ -340,5 +377,24 @@ export class GmailClient implements IEmailClient, IHaveGoogleClient<gmail_v1.Gma
             createdAt: new Date(),
         });
         return email;
+    }
+
+    /**
+     * Checks if the current token needs to be refreshed
+     * @returns true if token refresh is needed, false otherwise
+     */
+    public async needsTokenRefresh(): Promise<boolean> {
+        if (!this.authClient || !this.credentials) {
+            return true;
+        }
+
+        // Check if we have an expiry date and if it's in the past or within 5 minutes
+        const expiryDate = this.credentials.expiry_date;
+        if (!expiryDate) {
+            return true;
+        }
+
+        const fiveMinutesFromNow = Date.now() + (5 * 60 * 1000);
+        return expiryDate < fiveMinutesFromNow;
     }
 } 

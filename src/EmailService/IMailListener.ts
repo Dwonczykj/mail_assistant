@@ -4,4 +4,5 @@ export interface IMailListener {
     start(): void;
     stop(): void;
     authenticate({ oAuthClient }: { oAuthClient: OAuth2Client }): Promise<void>;
+    isActive(): boolean;
 }

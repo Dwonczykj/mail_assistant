@@ -1,0 +1,9 @@
+flowchart TD
+    A[Client Request] --> B{Has JWT?}
+    B -->|No| C[Redirect to /auth/google]
+    B -->|Yes| D{Valid JWT?}
+    D -->|No| C
+    D -->|Yes| E[Process Request]
+    C --> F[Google OAuth]
+    F --> G[Generate JWT]
+    G --> E

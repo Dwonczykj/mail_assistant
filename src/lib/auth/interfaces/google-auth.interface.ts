@@ -28,6 +28,11 @@ export interface IGoogleAuthService {
   refreshTokenIfNeeded(): Promise<GoogleAuthCredentials>;
 
   /**
+   * Check if the token needs to be refreshed
+   */
+  needsTokenRefresh(): Promise<boolean>;
+
+  /**
    * Revoke authentication
    */
   revokeAuth(): Promise<void>;

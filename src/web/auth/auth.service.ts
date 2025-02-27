@@ -7,6 +7,7 @@ import { redisConfig } from '../../lib/redis/RedisConfig';
 import { IGoogleAuth } from '../../lib/utils/IGoogleAuth';
 import { AuthEnvironment, GoogleAuthFactoryService } from '../../lib/auth/services/google-auth-factory.service';
 import { IGoogleAuthService } from '../../lib/auth/interfaces/google-auth.interface';
+import { JwtService } from '@nestjs/jwt';
 
 @Injectable()
 export class AuthService {
@@ -20,6 +21,7 @@ export class AuthService {
         private readonly googleAuthFactoryService: GoogleAuthFactoryService,
         @Inject('APP_ENVIRONMENT')
         private readonly environment: AuthEnvironment,
+        private readonly jwtService: JwtService,
         // @Inject('IGoogleAuth')
         // private readonly googleAuth: IGoogleAuth,
         // @Inject('GmailClient')
@@ -35,7 +37,12 @@ export class AuthService {
         return authUrl;
     }
 
-    async handleGoogleCallback(user: any): Promise<void> {
+    /**
+     * Handles the Google callback and generates a JWT token for the user
+     * @param user - The user object from the Google callback
+     * @returns A JWT token for the user to make API requests for protected routes
+     */
+    async handleGoogleCallback(user: any): Promise<string> {
         try {
             // Extract tokens from the user object
             const { accessToken, refreshToken } = user;
@@ -52,7 +59,19 @@ export class AuthService {
                 refreshToken
             });
 
-            // Additional logic after successful authentication
+            // Create a payload for the JWT
+            const payload = {
+                email: user.email,
+                sub: user.id,
+                accessToken: user.accessToken,
+                refreshToken: user.refreshToken,
+            };
+
+            // Generate a JWT token
+            const token = this.jwtService.sign(payload);
+
+            // Return the token
+            return token;
         } catch (error) {
             this.logger.error('Failed to handle Google callback', error);
             throw error;

@@ -10,6 +10,9 @@ import { OAuth2Client } from "google-auth-library";
 import { IGetOAuthClient, IReceiveOAuthClient } from "../lib/utils/IGoogleAuth";
 import { GoogleAuthFactoryService, AuthEnvironment } from '../lib/auth/services/google-auth-factory.service';
 import { IGoogleAuthService } from '../lib/auth/interfaces/google-auth.interface';
+import { UserCredentialsService, UserCredentials } from '../lib/auth/services/user-credentials.service';
+import { AuthProvider } from '../data/entity/AuthUser';
+import { config } from "../Config/config";
 
 class BulkProcessors {
     constructor(private readonly emailRepository: IMockEmailRepository) { }
@@ -30,6 +33,7 @@ class UnitProcessors {
 export class EmailServiceManager implements IGetOAuthClient {
     private emailServices: IAmEmailService[] = [];
     private googleAuthService: IGoogleAuthService;
+    private currentUserId: string | null = null;
 
     constructor(
         @Inject('ILogger') private readonly logger: ILogger,
@@ -38,14 +42,147 @@ export class EmailServiceManager implements IGetOAuthClient {
         @Inject('GmailService') private readonly gmailService: GmailService,
         private readonly googleAuthFactoryService: GoogleAuthFactoryService,
         @Inject('APP_ENVIRONMENT') private readonly environment: AuthEnvironment,
+        private readonly userCredentialsService: UserCredentialsService,
     ) {
         this.googleAuthService = this.googleAuthFactoryService.getAuthService(this.environment);
         this.logger.info(`EmailServiceManager created with auth service: ${this.googleAuthService.constructor.name} in environment: ${this.environment}`);
         this.emailServices.push(this.gmailService);
     }
 
+    /**
+     * Sets the current user context for all operations
+     * @param userId The ID of the user to set as current
+     */
+    public setCurrentUser(userId: string): void {
+        this.currentUserId = userId;
+        this.logger.info(`Set current user to: ${userId}`);
+    }
+
+    /**
+     * Sets credentials for a specific service from the database
+     * @param serviceName The name of the service (e.g., "gmail")
+     * @param userId The ID of the user whose credentials to use
+     */
+    public async setCredentialsForService(serviceName: string, userId: string): Promise<boolean> {
+        try {
+            if (!userId) {
+                throw new Error('User ID is required to set credentials');
+            }
+
+            const provider = await this.userCredentialsService.getProviderForService(serviceName);
+            const credentials = await this.userCredentialsService.getUserCredentials(userId, provider);
+
+            if (!credentials) {
+                this.logger.error(`No credentials found for user ${userId} with service ${serviceName}`);
+                return false;
+            }
+
+            // Find the service
+            const service = this.emailServices.find(s => s.name.toLowerCase() === serviceName.toLowerCase());
+            if (!service) {
+                this.logger.error(`Service ${serviceName} not found`);
+                return false;
+            }
+
+            // Set the credentials on the service
+            await this.applyCredentialsToService(service, credentials);
+            this.setCurrentUser(userId);
+
+            return true;
+        } catch (error) {
+            this.logger.error(`Error setting credentials for service ${serviceName}:`, { error });
+            return false;
+        }
+    }
+
+    /**
+     * Applies credentials to a specific service
+     */
+    private async applyCredentialsToService(service: IAmEmailService, credentials: UserCredentials): Promise<void> {
+        // Create or update OAuth client with the credentials
+        const oAuthClient = new OAuth2Client({
+            clientId: config.googleClientId,
+            clientSecret: config.googleClientSecret,
+            redirectUri: config.googleRedirectUri,
+        });
+
+        oAuthClient.setCredentials({
+            access_token: credentials.accessToken,
+            refresh_token: credentials.refreshToken,
+            expiry_date: credentials.expiryDate ? credentials.expiryDate.getTime() : undefined,
+        });
+
+        // Authenticate the service with these credentials
+        await service.authenticate({ oAuthClient });
+        this.logger.info(`Applied credentials to service: ${service.name}`);
+    }
+
+    /**
+     * Refreshes tokens if needed and updates the database
+     */
+    public async refreshTokensIfNeeded(serviceName: string): Promise<boolean> {
+        try {
+            if (!this.currentUserId) {
+                this.logger.error('No current user set, cannot refresh tokens');
+                return false;
+            }
+
+            const service = this.emailServices.find(s => s.name.toLowerCase() === serviceName.toLowerCase());
+            if (!service) {
+                this.logger.error(`Service ${serviceName} not found`);
+                return false;
+            }
+
+            // Check if the service has a method to check if token refresh is needed
+            const needsRefresh = await service.needsTokenRefresh();
+
+            if (needsRefresh) {
+                // Refresh the token
+                const provider = await this.userCredentialsService.getProviderForService(serviceName);
+                const newCreds = await this.googleAuthService.refreshTokenIfNeeded();
+
+                // Update the database
+                await this.userCredentialsService.updateUserCredentials(
+                    this.currentUserId,
+                    provider,
+                    {
+                        accessToken: newCreds.accessToken,
+                        refreshToken: newCreds.refreshToken,
+                        expiryDate: newCreds.expiryDate
+                    }
+                );
+
+                // Update the service
+                await this.setCredentialsForService(serviceName, this.currentUserId);
+
+                this.logger.info(`Refreshed tokens for service: ${serviceName}`);
+                return true;
+            }
+            return false;
+        } catch (error) {
+            this.logger.error(`Error refreshing tokens for service ${serviceName}:`, { error });
+            return false;
+        }
+    }
+
+    // Existing authenticate method with modifications to use user credentials
     public async authenticate(): Promise<OAuth2Client | null> {
-        const oauthClient = await this.googleAuthService.authenticate();
+        // If we have a current user, try to use their credentials
+        if (this.currentUserId) {
+            try {
+                // For each service, set credentials from the database
+                for (const service of this.emailServices) {
+                    await this.setCredentialsForService(service.name, this.currentUserId);
+                }
+                return this.googleAuthService.oAuthClient;
+            } catch (error) {
+                this.logger.error(`Failed to authenticate with user credentials: ${error}`, { error });
+                // Fall back to default authentication
+            }
+        }
+
+        // Default authentication flow
+        const oauthClient = await this.googleAuthService.authenticate() || new OAuth2Client();
         if (!oauthClient) {
             this.logger.error("Failed to authenticate EmailServiceManager as google auth service returned null");
             return null;
@@ -83,15 +220,28 @@ export class EmailServiceManager implements IGetOAuthClient {
         for (const service of this.emailServices) {
             await service.listenerService.start();
         }
+        this.logger.info('All mailbox listeners registered successfully');
     }
 
     public async destroyMailboxListeners(): Promise<void> {
         for (const service of this.emailServices) {
             await service.listenerService.stop();
         }
+        this.logger.info('All mailbox listeners destroyed successfully');
+    }
+
+    public async getListenerStatus(): Promise<{ [serviceName: string]: boolean }> {
+        const status: { [serviceName: string]: boolean } = {};
+        for (const service of this.emailServices) {
+            status[service.name] = service.listenerService.isActive();
+        }
+        return status;
     }
 
     public async fetchMail<T>({ processor, serviceName = "*", lastNHours, count, reapply = false }: { processor: (email: Email, service: IAmEmailService) => Promise<T>, serviceName?: string, lastNHours?: number, count: number, reapply?: boolean }): Promise<T[]> {
+        // Ensure authentication before fetching mail
+        await this.ensureAuthenticated(serviceName !== "*" ? serviceName : undefined);
+
         this.logger.debug(`Fetching last ${count} emails from ${serviceName}`);
         const emailServiceTuples = await this.lastNEmails({ serviceName, lastNHours, count });
         if (!reapply) {
@@ -126,9 +276,6 @@ export class EmailServiceManager implements IGetOAuthClient {
             }, serviceName, lastNHours, count
         });
     }
-
-
-
 
     public async saveLastNEmails({ serviceName = "*", lastNHours, count }: { serviceName?: string, lastNHours?: number, count: number }): Promise<void> {
         const emailServiceTuples = await this.fetchMail({
@@ -202,17 +349,21 @@ export class EmailServiceManager implements IGetOAuthClient {
     }
 
     // Method to ensure authentication before operations
-    private async ensureAuthenticated(): Promise<void> {
-        if (!await this.googleAuthService.isAuthenticated()) {
-            await this.googleAuthService.authenticate();
+    private async ensureAuthenticated(serviceName?: string): Promise<void> {
+        if (serviceName) {
+            // Refresh tokens for specific service if needed
+            await this.refreshTokensIfNeeded(serviceName);
         } else {
-            await this.googleAuthService.refreshTokenIfNeeded();
+            // Check all services
+            for (const service of this.emailServices) {
+                await this.refreshTokensIfNeeded(service.name);
+            }
         }
     }
 
-    // Use this before any Gmail API operations
+    // Modify existing methods to ensure authentication before operations
     async someGmailOperation(): Promise<void> {
-        await this.ensureAuthenticated();
+        await this.ensureAuthenticated('gmail');
         // Now perform the operation with valid credentials
     }
 }   
