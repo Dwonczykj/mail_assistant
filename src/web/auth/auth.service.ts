@@ -42,7 +42,7 @@ export class AuthService {
      * @param user - The user object from the Google callback
      * @returns A JWT token for the user to make API requests for protected routes
      */
-    async handleGoogleCallback(user: any): Promise<string> {
+    async generateJwtToken(user: any): Promise<string> {
         try {
             // Extract tokens from the user object
             const { accessToken, refreshToken } = user;
@@ -68,13 +68,24 @@ export class AuthService {
             };
 
             // Generate a JWT token
-            const token = this.jwtService.sign(payload);
+            const token = this.jwtService.sign(payload, {
+                secret: config.jwt.secret,
+                expiresIn: config.jwt.expiresIn
+            });
 
             // Return the token
             return token;
         } catch (error) {
             this.logger.error('Failed to handle Google callback', error);
             throw error;
+        }
+    }
+
+    async validateToken(token: string): Promise<any> {
+        try {
+            return this.jwtService.verify(token);
+        } catch (error) {
+            return null;
         }
     }
 } 

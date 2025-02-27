@@ -3,6 +3,8 @@ import { Response } from 'express';
 import { EmailServiceManager } from '../../EmailService/EmailServiceManager';
 import { AuthGuard } from '@nestjs/passport';
 import { ILogger } from '../../lib/logger/ILogger';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+
 
 @Controller('webhook')
 export class WebhookController {
@@ -16,7 +18,7 @@ export class WebhookController {
      * Requires authentication via Google OAuth
      */
     @Post('register-gmail')
-    @UseGuards(AuthGuard('google'))
+    @UseGuards(JwtAuthGuard)
     async registerGmailWebhook(@Res() res: Response) {
         try {
             // Ensure we're authenticated
@@ -49,7 +51,7 @@ export class WebhookController {
      * Requires authentication via Google OAuth
      */
     @Post('unregister-gmail')
-    @UseGuards(AuthGuard('google'))
+    @UseGuards(JwtAuthGuard)
     async unregisterGmailWebhook(@Res() res: Response) {
         try {
             // Ensure we're authenticated
@@ -81,7 +83,7 @@ export class WebhookController {
      * Gets the status of Gmail webhook registration
      */
     @Get('gmail-status')
-    @UseGuards(AuthGuard('google'))
+    @UseGuards(JwtAuthGuard)
     async getGmailWebhookStatus(@Res() res: Response) {
         try {
             const isAuthenticated = await this.emailServiceManager.authenticated;
