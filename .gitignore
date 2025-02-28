@@ -9,5 +9,14 @@ node_modules
 logs/
 *.log
 gitleaks-report.txt
-data
 /test/mocks/*.json
+*.sqlite
+*.sqlite3
+*.db
+*.db3
+*.db4
+*.db5
+*.db6
+*.db7
+*.db8
+*.sql

@@ -50,22 +50,33 @@ abstract class ILockable {
 
 @Injectable()
 export class GmailClient extends ILockable implements IEmailClient, IHaveGoogleClient<gmail_v1.Gmail> {
-    private static instance: GmailClient | null = null;
-    private authClient: OAuth2Client | null = null;
-    private _httpGoogleClient: gmail_v1.Gmail | null = null;
-    private credentials: Credentials | null = null;
-    private readonly emailAdaptor: GmailAdaptor;
-    private gmailLabels: gmail_v1.Schema$Label[] = [];
-    private gmailLabelsExpireAt: Date | null = null;
 
     public readonly name: string = "gmail";
+    private readonly emailAdaptor: GmailAdaptor;
+
     private googleAuthService: IGoogleAuthService;
+    // private authClient: OAuth2Client | null = null; // TODO: GET/Store this on the auth service not here.
+    public get authClient(): OAuth2Client | null {
+        return this.googleAuthService.oAuthClient;
+    }
+    // private credentials: Credentials | null = null; // TODO: Store this on the auth service not here.
+    public get credentials() {
+        return this.googleAuthService.oAuthClient.credentials;
+    }
+
+    private gmailLabels: gmail_v1.Schema$Label[] = [];
+    private gmailLabelsExpireAt: Date | null = null;
     private pullPubSubSubscription: Subscription | null = null;
+
     public get httpGoogleClient(): gmail_v1.Gmail | null {
-        return this._httpGoogleClient;
+        if (!this.authClient) {
+            return null;
+        }
+        return google.gmail({ version: 'v1', auth: this.authClient });
     }
 
     public get authenticated(): Promise<boolean> {
+        // TODO: Defer to the auth provider.
         return Promise.resolve(this.authClient !== null);
     }
 
@@ -84,8 +95,8 @@ export class GmailClient extends ILockable implements IEmailClient, IHaveGoogleC
         @Inject('APP_ENVIRONMENT') private readonly environment: AuthEnvironment,
     ) {
         super();
-        this.authClient = null;
         this.emailAdaptor = new GmailAdaptor();
+        // TODO: We need to fix this method to ensure that it always get an auth service rather than complaining that there is no service for this.environment
         this.googleAuthService = this.googleAuthFactoryService.getAuthService(this.environment);
     }
 
@@ -95,21 +106,8 @@ export class GmailClient extends ILockable implements IEmailClient, IHaveGoogleC
      * After this, the EnsureAuthenticated decorator will handle token refreshes automatically.
      */
     public async authenticate({ oAuthClient }: { oAuthClient: OAuth2Client }): Promise<void> {
-        this.authClient = oAuthClient || new OAuth2Client();
-
-        // If we don't have credentials, get them now
-        if (!this.authClient.credentials || !this.authClient.credentials.refresh_token) {
-            await this.refreshAuthClient();
-        } else {
-            // Store the credentials for later use
-            this.credentials = this.authClient.credentials;
-            this._httpGoogleClient = google.gmail({ version: 'v1', auth: this.authClient });
-        }
-
-        this.logger.info('Gmail client initialized successfully');
+        await this.googleAuthService.authenticate();
     }
-
-
 
     /**
      * Refreshes the authentication client by getting new tokens if needed
@@ -117,22 +115,16 @@ export class GmailClient extends ILockable implements IEmailClient, IHaveGoogleC
      */
     public async refreshAuthClient(): Promise<void> {
         try {
+            // TODO: Fix us needing to call this
             if (!this.googleAuthService) {
-                this.googleAuthService = this.googleAuthFactoryService.getAuthService(this.environment);
+                this.logger.warn(`Gmail client not authenticated, creating new auth service for environment: ${this.environment}`);
+            }
+            this.googleAuthService ??= this.googleAuthFactoryService.getAuthService(this.environment);
+            if (!this.googleAuthService) {
+                this.logger.error(`Gmail client not authenticated, creating new auth service for environment: ${this.environment}`);
+                throw new Error(`Gmail client not able to be authenticated from the auth service for environment: ${this.environment}`);
             }
             const newCreds = await this.googleAuthService.refreshTokenIfNeeded();
-            if (!this.authClient) {
-                this.authClient = new OAuth2Client();
-            }
-
-            this.credentials = {
-                access_token: newCreds.accessToken,
-                refresh_token: newCreds.refreshToken,
-                expiry_date: newCreds.expiryDate ? newCreds.expiryDate.getTime() : null,
-            };
-
-            this.authClient.setCredentials(this.credentials);
-            this._httpGoogleClient = google.gmail({ version: 'v1', auth: this.authClient });
             this.logger.info('Gmail client authentication refreshed successfully');
         } catch (error) {
             this.logger.error('Failed to refresh Gmail client authentication', { error });
@@ -145,18 +137,7 @@ export class GmailClient extends ILockable implements IEmailClient, IHaveGoogleC
      * @returns true if token refresh is needed, false otherwise
      */
     public async needsTokenRefresh(): Promise<boolean> {
-        if (!this.authClient || !this.credentials) {
-            return true;
-        }
-
-        // Check if we have an expiry date and if it's in the past or within 5 minutes
-        const expiryDate = this.credentials.expiry_date;
-        if (!expiryDate) {
-            return true;
-        }
-
-        const fiveMinutesFromNow = Date.now() + (5 * 60 * 1000);
-        return expiryDate < fiveMinutesFromNow;
+        return this.googleAuthService.needsTokenRefresh();
     }
 
     /**
@@ -181,13 +162,13 @@ export class GmailClient extends ILockable implements IEmailClient, IHaveGoogleC
                 },
             });
             this.logger.info(`✅👀 Watch added to Gmail: Push Gmails to Pub/Sub topic: ${topicName} with expiration date: ${res.data.expiration ? new Date(Number.parseInt(res.data.expiration)).toLocaleString() : 'unknown'}`, { "response": res.data });
+            await this.pullMessagesFromPubSubLoop();
         } catch (error: any) {
             this.logger.error(`❌👀 Failed to set up email watch for topic: ${topicName} with error: ${error}`, { "error": error.toString() });
             throw error;
         }
     }
 
-    @EnsureAuthenticated()
     public async killIncomingEmailListener(): Promise<void> {
         try {
             if (this.httpGoogleClient) {
@@ -220,18 +201,115 @@ export class GmailClient extends ILockable implements IEmailClient, IHaveGoogleC
     async pullMessagesFromPubSubLoop(): Promise<void> {
         const pubsub = new PubSub();
         const topicName = config.google.pubSubConfig.topicName;
-        const subscriptionName = config.google.pubSubConfig.subscriptionName;
-        this.pullPubSubSubscription = pubsub.subscription(subscriptionName);
-        const messageHandler = async (message: Message) => {
-            this.logger.info(`Received message[${message.id}]: ${message.data} \nwith attributes: ${message.attributes}`);
-            // Acknowledge the message after processing it
-            message.ack();
+        const subscriptionName = config.google.pubSubConfig.subscriptionNamePull;
+
+        try {
+            this.logger.info(`Setting up PubSub subscription: ${subscriptionName} for topic: ${topicName}`);
+
+            // Get the subscription
+            this.pullPubSubSubscription = pubsub.subscription(subscriptionName);
+
+            // Check if the subscription exists
+            const [exists] = await this.pullPubSubSubscription.exists();
+            if (!exists) {
+                this.logger.warn(`Subscription ${subscriptionName} does not exist. Creating it now.`);
+                // Create the subscription if it doesn't exist
+                [this.pullPubSubSubscription] = await pubsub.createSubscription(topicName, subscriptionName);
+            }
+
+            // Verify subscription type
+            const [metadata] = await this.pullPubSubSubscription.getMetadata();
+            if (metadata.pushConfig && metadata.pushConfig.pushEndpoint) {
+                this.logger.warn(`Subscription ${subscriptionName} is configured as a push subscription. Pull methods may not work.`);
+                return;
+            }
+
+            const messageHandler = async (message: Message) => {
+                try {
+                    this.logger.info(`Received message[${message.id}]: ${message.data} \nwith attributes: ${JSON.stringify(message.attributes)}`);
+
+                    // Process the message here
+                    // For example, you might want to check for new emails when a notification arrives
+                    await this.processGmailNotification(message);
+
+                    // Acknowledge the message after processing it
+                    message.ack();
+                } catch (error) {
+                    this.logger.error(`Error processing message: ${error}`, { error });
+                    // You might want to nack the message in case of processing errors
+                    // message.nack();
+                    message.ack(); // Or still ack it to prevent redelivery
+                }
+            };
+
+            this.pullPubSubSubscription.on('message', messageHandler);
+
+            // Handle errors
+            this.pullPubSubSubscription.on('error', error => {
+                this.logger.error('Error receiving message from PubSub:', {
+                    error: error.toString(),
+                    code: error.code,
+                    details: error.details,
+                    name: error.name,
+                    stack: error.stack
+                });
+
+                // If this is a subscription type error, we might need to reconfigure
+                if (error.code === 9 && error.details?.includes('not supported for this subscription type')) {
+                    this.logger.warn('This appears to be a push subscription. Consider reconfiguring it as a pull subscription or using a different approach.');
+                }
+            });
+
+            this.logger.info(`Successfully set up PubSub subscription: ${subscriptionName}`);
+        } catch (error) {
+            if (error instanceof Error) {
+                this.logger.error('Failed to set up PubSub subscription:', {
+                    error: error.toString(),
+                    stack: error.stack,
+                    subscriptionName
+                });
+            } else {
+                this.logger.error('Failed to set up PubSub subscription:', {
+                    error: `${error}`,
+                    stack: undefined,
+                    subscriptionName
+                });
+                throw error;
+            }
         }
-        this.pullPubSubSubscription.on('message', messageHandler);
-        // Optional: handle errors.
-        this.pullPubSubSubscription.on('error', error => {
-            console.error('Error receiving message:', error);
-        });
+    }
+
+    /**
+     * Processes Gmail notifications received from PubSub.
+     * This method is called when a new message is received from the PubSub subscription.
+     * It parses the message data and fetches new emails if necessary.
+     * 
+     * @param message - The PubSub message containing Gmail notification data
+     * @returns {Promise<void>} A promise that resolves when the notification is processed
+     */
+    private async processGmailNotification(message: Message): Promise<void> {
+        try {
+            // The message data is a base64-encoded string
+            const data = JSON.parse(Buffer.from(message.data.toString(), 'base64').toString());
+
+            this.logger.info('Processing Gmail notification:', { data });
+
+            // Check if this is a Gmail notification
+            if (data.emailAddress) {
+                // Fetch recent emails - you might want to adjust the count and time window
+                const recentEmails = await this.fetchLastEmails({ count: 10, lastNHours: 1 });
+                this.logger.info(`Fetched ${recentEmails.length} recent emails after notification`);
+
+                // Here you could trigger email categorization or other processing
+                // For example:
+                // for (const email of recentEmails) {
+                //     // Process each email
+                // }
+            }
+        } catch (error) {
+            this.logger.error('Error processing Gmail notification:', { error });
+            throw error;
+        }
     }
 
     @EnsureAuthenticated()
@@ -395,7 +473,7 @@ export class GmailClient extends ILockable implements IEmailClient, IHaveGoogleC
             email.labels.push(label.name);
         }
 
-        this.logger.info(`Email categorised with subject: ${email.subject} -> Label: ${label.name}`, { "email": email });
+        this.logger.info(`Email categorised with subject: ${email.subject} -> Label: ${label.name}`);
         this.fyxerActionRepo.create({
             actionName: 'categoriseEmail',
             actionData: JSON.stringify({

@@ -37,13 +37,11 @@ async function main(): Promise<void> {
 
     const emailServiceManager = appContext.get(EmailServiceManager);
     await emailServiceManager.initializeWithServiceUser();
+    await emailServiceManager.registerMailboxListeners();
 
     await emailServiceManager.fetchAndLabelLastEmails({ serviceName: "*", count: 10 });
     // Example daemon loop: replace this with actual daemon logic
-    while (true) {
-        // POLL for new emails every 60 seconds? before we register the webhook to process each new email for us rather than running this daemon.
-        await new Promise<void>(resolve => setTimeout(resolve, 60000));
-    }
+    process.exit(0);
 }
 
 main().catch((error: any) => {

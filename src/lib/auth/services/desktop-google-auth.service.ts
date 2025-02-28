@@ -9,7 +9,7 @@ import * as http from 'http';
 import { URL } from 'url';
 import { config } from '../../../Config/config';
 import { ILogger } from '../../logger/ILogger';
-
+import { GoogleDesktopAuthError } from '../errors/googl-auth-errors';
 @Injectable()
 export class DesktopGoogleAuthService implements IGoogleAuthService {
   // private readonly logger = new Logger(DesktopGoogleAuthService.name);
@@ -50,7 +50,7 @@ export class DesktopGoogleAuthService implements IGoogleAuthService {
           expiryDate: token.expiry_date ? new Date(token.expiry_date) : undefined
         };
         if (!this.oAuth2Client) {
-          throw new Error('No OAuth2Client found');
+          throw new GoogleDesktopAuthError('No OAuth2Client found');
         }
         else if (!token.access_token && !token.refresh_token && !token.expiry_date) {
           this.logger.error('Invalid token found in loadSavedCredentials', { token });
@@ -123,14 +123,14 @@ export class DesktopGoogleAuthService implements IGoogleAuthService {
 
   get oAuthClient(): OAuth2Client {
     if (!this.oAuth2Client) {
-      throw new Error('No OAuth2Client found');
+      throw new GoogleDesktopAuthError('No OAuth2Client found');
     }
     return this.oAuth2Client;
   }
 
   getAuthUrl(): string {
     if (!this.oAuth2Client) {
-      throw new Error('No OAuth2Client found');
+      throw new GoogleDesktopAuthError('No OAuth2Client found');
     }
     return this.oAuth2Client.generateAuthUrl({
       access_type: 'offline',
@@ -140,6 +140,8 @@ export class DesktopGoogleAuthService implements IGoogleAuthService {
   }
 
   async handleOAuthCallback({ code }: { code: string }): Promise<void> {
+    this.logger.info('handleOAuthCallback', { code });
+    this.logger.warn('handleOAuthCallback - where is this called from and what code could it possibly have as the desktop application authenticates via the desktop secrets file i thought and service account, does it require a callback code from a browser auth?',);
     if (!this.oAuth2Client) {
       this.oAuth2Client = new OAuth2Client({
         clientId: config.googleClientId,
@@ -152,7 +154,7 @@ export class DesktopGoogleAuthService implements IGoogleAuthService {
     this.oAuth2Client.setCredentials(tokens);
     const credentials = tokens;
     if (!credentials.access_token || !credentials.refresh_token || !credentials.expiry_date) {
-      throw new Error('No credentials found');
+      throw new GoogleDesktopAuthError('No credentials found');
     }
     this.credentials = {
       accessToken: credentials.access_token,
@@ -201,7 +203,7 @@ export class DesktopGoogleAuthService implements IGoogleAuthService {
     return new Promise((resolve, reject) => {
       // Generate auth URL
       if (!this.oAuth2Client) {
-        throw new Error('No OAuth2Client found');
+        throw new GoogleDesktopAuthError('No OAuth2Client found');
       }
       const authUrl = this.oAuth2Client.generateAuthUrl({
         access_type: 'offline',
@@ -215,7 +217,7 @@ export class DesktopGoogleAuthService implements IGoogleAuthService {
       const server = http.createServer(async (req, res) => {
         try {
           if (!req.url) {
-            throw new Error('No URL in request');
+            throw new GoogleDesktopAuthError('No URL in request');
           }
 
           const parsedUrl = new URL(req.url, 'http://localhost');
@@ -229,12 +231,12 @@ export class DesktopGoogleAuthService implements IGoogleAuthService {
 
             // Exchange code for tokens
             if (!this.oAuth2Client) {
-              throw new Error('No OAuth2Client found');
+              throw new GoogleDesktopAuthError('No OAuth2Client found');
             }
             const { tokens } = await this.oAuth2Client.getToken(code);
             this.oAuth2Client.setCredentials(tokens);
             if (!tokens.access_token || !tokens.refresh_token || !tokens.expiry_date) {
-              throw new Error('No credentials found');
+              throw new GoogleDesktopAuthError('No credentials found');
             }
             this.credentials = {
               accessToken: tokens.access_token,
@@ -245,7 +247,7 @@ export class DesktopGoogleAuthService implements IGoogleAuthService {
             this.saveToken(tokens);
             resolve(this.credentials);
           } else {
-            throw new Error('No code found in callback URL');
+            throw new GoogleDesktopAuthError('No code found in callback URL');
           }
         } catch (error) {
           this.logger.error('Error during authentication callback', error);
@@ -273,7 +275,7 @@ export class DesktopGoogleAuthService implements IGoogleAuthService {
 
   async refreshTokenIfNeeded(): Promise<GoogleAuthCredentials> {
     if (!this.credentials) {
-      throw new Error('Not authenticated');
+      throw new GoogleDesktopAuthError('Not authenticated');
     }
 
     const now = Date.now();
@@ -283,12 +285,12 @@ export class DesktopGoogleAuthService implements IGoogleAuthService {
     if (expiryTime - now < 5 * 60 * 1000) {
       this.logger.info('Refreshing access token');
       if (!this.oAuth2Client) {
-        throw new Error('No OAuth2Client found');
+        throw new GoogleDesktopAuthError('No OAuth2Client found');
       }
       const { credentials } = await this.oAuth2Client.refreshAccessToken();
       this.oAuth2Client.setCredentials(credentials);
       if (!credentials.access_token || !credentials.refresh_token || !credentials.expiry_date) {
-        throw new Error('No credentials found');
+        throw new GoogleDesktopAuthError('No credentials found');
       }
       this.credentials = {
         accessToken: credentials.access_token,
@@ -305,7 +307,7 @@ export class DesktopGoogleAuthService implements IGoogleAuthService {
     if (this.credentials?.accessToken) {
       try {
         if (!this.oAuth2Client) {
-          throw new Error('No OAuth2Client found');
+          throw new GoogleDesktopAuthError('No OAuth2Client found');
         }
         await this.oAuth2Client.revokeToken(this.credentials.accessToken);
         this.credentials = null;

@@ -29,7 +29,7 @@ import { AuthUser } from '../../data/entity/AuthUser';
 import { UserCredentialsService } from '../../lib/auth/services/user-credentials.service';
 import { DataSource } from 'typeorm';
 import { ServiceUserService } from '../../lib/auth/services/service-user.service';
-
+import { InitialiseGoogleAuthenticatedDependenciesService } from '../initialization/InitialiseGoogleAuthenticatedDependenciesService.service';
 @Module({})
 export class AuthModule {
     static forRoot(environment: AuthEnvironment): DynamicModule {
@@ -47,7 +47,6 @@ export class AuthModule {
             providers: [
                 AuthService,
                 GoogleStrategy,
-                // GmailInitService,
                 DatabaseInitializerService,
                 GoogleAuthFactoryService,
                 WebGoogleAuthService,
@@ -118,6 +117,11 @@ export class AuthModule {
                 },
                 UserCredentialsService,
                 ServiceUserService,
+                InitialiseGoogleAuthenticatedDependenciesService,
+                {
+                    provide: 'InitialiseGoogleAuthenticatedDependenciesService',
+                    useClass: InitialiseGoogleAuthenticatedDependenciesService
+                }
             ],
             exports: [
                 AuthService,

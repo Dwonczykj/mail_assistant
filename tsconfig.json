@@ -5,7 +5,10 @@
         "lib": [
             "ES2022"
         ], // Include the latest ECMAScript library.
-        "rootDir": "./src", // Input source directory.
+        "rootDirs": [
+            "./src",
+            "./test"
+        ], // Input source directory.
         "outDir": "./dist", // Output directory for compiled files.
         "moduleResolution": "node", // Resolve modules using Node conventions.
         "strict": true, // Enable strict type-checking options.

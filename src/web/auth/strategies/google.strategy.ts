@@ -83,14 +83,15 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
 
             await this.authUserRepository.save(authUser);
 
-            // Return user with auth info
-            const result = {
+            // Return user with auth info, Google Strategy can only return a user object
+            const googleStratReturnUser = {
                 ...user,
+                authUser,
                 accessToken,
                 refreshToken,
             };
 
-            done(null, result);
+            done(null, googleStratReturnUser);
         } catch (error) {
             done(error, false);
         }

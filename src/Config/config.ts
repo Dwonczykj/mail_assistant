@@ -30,18 +30,21 @@ const openrouter = {
 export interface PubSubConfig {
     projectId: string;
     topicName: string;
-    subscriptionName: string;
+    subscriptionNamePush: string;
+    subscriptionNamePull: string;
 }
 
 export const gmailPubSubConfig: PubSubConfig = {
     projectId: process.env.GOOGLE_CLOUD_PROJECT_ID || '',
     topicName: process.env.GOOGLE_TOPIC || `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/topics/gmail-notifications`,
-    subscriptionName: process.env.GOOGLE_SUBSCRIPTION || `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/subscriptions/gmail-notifications-sub`
+    subscriptionNamePush: process.env.GOOGLE_SUBSCRIPTION_PUSH || `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/subscriptions/gmail-notifications-sub-push`,
+    subscriptionNamePull: process.env.GOOGLE_SUBSCRIPTION_PULL || `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/subscriptions/gmail-notifications-sub-pull`
 };
 export const exchangePubSubConfig: PubSubConfig = {
     projectId: process.env.GOOGLE_CLOUD_PROJECT_ID || '',
     topicName: process.env.GOOGLE_EXCHANGE_TOPIC || `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/topics/exchange-notifications`,
-    subscriptionName: process.env.GOOGLE_EXCHANGE_SUBSCRIPTION || `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/subscriptions/exchange-notifications-sub`
+    subscriptionNamePush: process.env.GOOGLE_EXCHANGE_SUBSCRIPTION_PUSH || `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/subscriptions/exchange-notifications-sub-push`,
+    subscriptionNamePull: process.env.GOOGLE_EXCHANGE_SUBSCRIPTION_PULL || `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/subscriptions/exchange-notifications-sub-pull`
 };
 
 const google = {

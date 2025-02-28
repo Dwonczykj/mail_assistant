@@ -17,7 +17,6 @@ import { GmailClient } from '../Repository/GmailClient';
 import { EmailServiceManager } from '../EmailService/EmailServiceManager';
 import { ILogger } from '../lib/logger/ILogger';
 import { GmailService } from '../EmailService/GmailService';
-import { InitializationModule } from './initialization/initialization.module';
 import { GoogleAuthModule } from '../lib/auth/google-auth.module';
 import { AuthEnvironment, GoogleAuthFactoryService } from '../lib/auth/services/google-auth-factory.service';
 import { WebGoogleAuthService } from '../lib/auth/services/web-google-auth.service';
@@ -28,6 +27,7 @@ import { ExchangeEmailGraphAPIPushProcessor } from './controllers/ExchangeEmailG
 import { ExchangeEmailGraphAPIPubSubPublishProcessor } from './controllers/ExchangeEmailGraphAPIPubSubPublishProcessor.service';
 import { WebhookModule } from './webhook/webhook.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AppController } from './app.controller';
 
 @Module({})
 export class AppModule {
@@ -43,6 +43,11 @@ export class AppModule {
                 // InitializationModule,
                 GoogleAuthModule,
                 WebhookModule.forRoot(environment),
+            ],
+            controllers: [
+                GmailWebhookController,
+                ExchangeWebhookController,
+                AppController,
             ],
             providers: [
                 // GmailInitService,
@@ -130,10 +135,6 @@ export class AppModule {
                     provide: 'ExchangeEmailGraphAPIPubSubPublishProcessor',
                     useClass: ExchangeEmailGraphAPIPubSubPublishProcessor
                 },
-            ],
-            controllers: [
-                GmailWebhookController,
-                ExchangeWebhookController,
             ],
             exports: [
                 EmailServiceManager,

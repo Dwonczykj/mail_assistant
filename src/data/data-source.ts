@@ -12,7 +12,7 @@ const AppDataSource = new DataSource({
     database: path.join(process.cwd(), "data", "fyxer.sqlite"),
     entities: [FyxerAction, ProcessedObject, User, AuthUser],
     synchronize: true, // Be careful with this in production
-    logging: true,
+    logging: ["error", "warn", "migration", "schema"],
 })
 
 @Injectable()

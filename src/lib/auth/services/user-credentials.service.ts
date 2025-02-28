@@ -23,6 +23,12 @@ export class UserCredentialsService {
         @Inject('ILogger') private readonly logger: ILogger
     ) { }
 
+    /**
+     * Get the credentials for a user and provider
+     * @param userId - The id of the user
+     * @param provider - The provider of the credentials i.e. google, microsoft, etc.
+     * @returns The credentials for the user and provider
+     */
     async getUserCredentials(userId: string, provider: AuthProvider): Promise<UserCredentials | null> {
         try {
             const authUser = await this.authUserRepository.findOne({

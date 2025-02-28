@@ -116,7 +116,7 @@ Provide your response:`,
             );
 
             // Get back the object
-            this.logger.info(structuredOutput);
+            this.logger.info(`${structuredOutput.label} with confidence ${structuredOutput.labelConfidence} and reason ${structuredOutput.reason}`);
             if (structuredOutput && ((structuredOutput.labelConfidence ?? 0) < 0 || (structuredOutput.labelConfidence ?? 0) > 1)) {
                 this.logger.warn("Label confidence is out of range");
                 structuredOutput.labelConfidence = 0.5;

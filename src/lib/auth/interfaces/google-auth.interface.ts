@@ -48,7 +48,9 @@ export interface IGoogleAuthService {
   getAuthUrl(): string;
 
   /**
-   * Handle the OAuth callback
+   * Handle the OAuth callback and its job is:
+   * - In the case of **web**, get the credentials from the url callback query and apply the code to the oauth2client to get the credentials out.
+   * - In the case of **desktop**, get the credentials from the file system and apply the code to the oauth2client to get the credentials out.
    */
   handleOAuthCallback(whatever: any): Promise<void>;
 

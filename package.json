@@ -6,6 +6,7 @@
   "scripts": {
     "build": "nest build",
     "debug": "IS_DAEMON=true ts-node src/worker.ts",
+    "pubsub-setup": "ts-node src/scripts/pubsub-setup.ts",
     "desktop": "IS_DAEMON=true ts-node src/index.ts",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
