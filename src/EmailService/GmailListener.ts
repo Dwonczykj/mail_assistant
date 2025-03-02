@@ -5,6 +5,7 @@ import { ILogger } from "../lib/logger/ILogger";
 import { OAuth2Client } from "google-auth-library";
 import { Message, PubSub } from "@google-cloud/pubsub";
 import { config } from "../Config/config";
+import { Email } from "../models/Email";
 
 @Injectable()
 export class GmailListenerService implements IMailListener {
@@ -17,9 +18,11 @@ export class GmailListenerService implements IMailListener {
         this.oAuthClient = oAuthClient;
     }
 
-    async start(): Promise<void> {
+    async start({processEmailCallback}: {processEmailCallback: (email: Email) => Promise<void>}): Promise<void> {
         try {
-            await this.emailClient.listenForIncomingEmails();
+            await this.emailClient.listenForIncomingEmails({
+                processEmailCallback
+            });
             this.active = true;
             this.logger.info('Gmail listener started successfully');
         } catch (error) {

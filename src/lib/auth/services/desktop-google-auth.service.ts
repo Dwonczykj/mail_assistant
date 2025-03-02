@@ -38,11 +38,14 @@ export class DesktopGoogleAuthService2 implements IGoogleAuthService2 {
         const token = JSON.parse((await fsp.readFile(this.TOKEN_PATH, 'utf8')));
         const redirectUri = (token.redirect_uris as string[]).find(uri => uri.includes(`localhost:${config.apiPort}`)) || token.redirect_uris[0];
 
-        return new google.auth.OAuth2(
+        const oauth2Client = new google.auth.OAuth2(
           token.client_id, token.client_secret, redirectUri
         );
+        oauth2Client.setCredentials({ refresh_token: token.refresh_token });
+        return oauth2Client;
       }
     } catch (error) {
+      this.logger.error(`Failed to load client from ${this.TOKEN_PATH}`, { error: `${error}` });
       return null;
     }
     return null;
@@ -52,11 +55,16 @@ export class DesktopGoogleAuthService2 implements IGoogleAuthService2 {
     const content = await fsp.readFile(this.CREDENTIALS_PATH, 'utf8');
     const keys = JSON.parse(content);
     const key = keys.installed || keys.web;
+    if (client.credentials.access_token) {
+      this.logger.warn('createAndSaveTokenUsingClient - we have an access token, we should not be using this function then');
+    }
     const payload = JSON.stringify({
       type: 'authorized_user',
       client_id: key.client_id,
       client_secret: key.client_secret,
       refresh_token: client.credentials.refresh_token,
+      // access_token: client.credentials.access_token, // TODO: Do we have this value?
+      redirect_uris: key.redirect_uris || [],
     });
     await fsp.writeFile(this.TOKEN_PATH, payload);
   }
@@ -126,6 +134,7 @@ export class WebGoogleAuthService2 implements IGoogleAuthService2 {
         config.google.clientSecret,
         config.google.redirectUri
       );
+
       oauth2Client.setCredentials({ access_token: accessToken });
 
       return oauth2Client;

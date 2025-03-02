@@ -12,7 +12,11 @@ export interface IEmailClient {
     /**
      * Starts listening for incoming emails through Gmail push notifications.
      */
-    listenForIncomingEmails(): Promise<void>;
+    listenForIncomingEmails({
+        processEmailCallback
+    }: {
+        processEmailCallback: (email: Email) => Promise<void>
+    }): Promise<void>;
 
     /**
      * Fetches the last N emails from the Gmail server.

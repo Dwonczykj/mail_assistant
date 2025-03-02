@@ -11,6 +11,7 @@ export interface UserCredentials {
     expiryDate?: Date;
     userId: string;
     email?: string;
+    redirectUris?: string[];
 }
 
 @Injectable()
@@ -126,6 +127,10 @@ export class UserCredentialsService {
 
             if (credentials.expiryDate) {
                 authUser.expiryDate = credentials.expiryDate;
+            }
+
+            if (credentials.redirectUris) {
+                authUser.setRedirectUris(credentials.redirectUris);
             }
 
             await this.authUserRepository.save(authUser);

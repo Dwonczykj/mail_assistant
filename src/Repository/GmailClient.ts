@@ -16,12 +16,15 @@ import { IGoogleAuthService, IGoogleAuthService2 } from '../lib/auth/interfaces/
 import { Message, Subscription, PubSub } from '@google-cloud/pubsub';
 import { ILockable } from '../lib/auth/interfaces/ILockable';
 import { RequestContext } from '../lib/context/request-context';
+import { ProcessedObjectRepository } from './ProcessedObjectRepository';
+import { ObjectType } from '../data/entity/ProcessedObject';
 
 @Injectable()
 export class GmailClient extends ILockable implements IEmailClient {
 
     public readonly name: string = "gmail";
-    private readonly emailAdaptor: GmailAdaptor = new GmailAdaptor();;
+    private readonly emailAdaptor: GmailAdaptor = new GmailAdaptor();
+    private readonly historyTypes: string[] = ['messageAdded', 'labelAdded']; // TODO: Check if this is all we want to check
 
     private gmailLabels: gmail_v1.Schema$Label[] = [];
     private gmailLabelsExpireAt: Date | null = null;
@@ -61,6 +64,7 @@ export class GmailClient extends ILockable implements IEmailClient {
         @Inject('ILogger') private readonly logger: ILogger,
         @Inject('IGoogleAuthService') private readonly googleAuthService: IGoogleAuthService2,
         @Inject('IFyxerActionRepository') private readonly fyxerActionRepo: IFyxerActionRepository,
+        @Inject('ProcessedObjectRepository') private readonly processedObjectRepo: ProcessedObjectRepository,
     ) {
         super();
     }
@@ -78,7 +82,11 @@ export class GmailClient extends ILockable implements IEmailClient {
      * Listens for incoming emails using Gmail API's watch functionality.
      * It sets up push notifications on the "INBOX" by using a webhook/topic that is setup in the Google Cloud Pub/Sub console and routes to our WebAPI application.
      */
-    public async listenForIncomingEmails(): Promise<void> {
+    public async listenForIncomingEmails({
+        processEmailCallback
+    }: {
+        processEmailCallback: (email: Email) => Promise<void>
+    }): Promise<void> {
         const contextData = RequestContext.get();
         const user = contextData.user; // BUG It is set correctly in service but here is a different instance passed in and therefore user is null.
 
@@ -103,7 +111,7 @@ export class GmailClient extends ILockable implements IEmailClient {
                 },
             });
             this.logger.info(`✅👀 Watch added to Gmail: Push Gmails to Pub/Sub topic: ${topicName} with expiration date: ${res.data.expiration ? new Date(Number.parseInt(res.data.expiration)).toLocaleString() : 'unknown'}`, { "response": res.data });
-            await this.pullMessagesFromPubSubLoop();
+            await this.pullMessagesFromPubSubLoop({ processor: processEmailCallback });
         } catch (error: any) {
             this.logger.error(`❌👀 Failed to set up email watch for topic: ${topicName} with error: ${error}`, { "error": error.toString() });
             throw error;
@@ -136,7 +144,11 @@ export class GmailClient extends ILockable implements IEmailClient {
      * 
      * @returns {Promise<void>} A promise that resolves when the subscription is successfully set up.
     **/
-    async pullMessagesFromPubSubLoop(): Promise<void> {
+    async pullMessagesFromPubSubLoop({
+        processor
+    }: {
+        processor: (email: Email) => Promise<void>
+    }): Promise<void> {
         const pubsub = new PubSub();
         const topicName = config.google.pubSubConfig.topicName;
         const subscriptionName = config.google.pubSubConfig.subscriptionNamePull;
@@ -166,9 +178,8 @@ export class GmailClient extends ILockable implements IEmailClient {
                 try {
                     this.logger.info(`Received message[${message.id}]: ${message.data} \nwith attributes: ${JSON.stringify(message.attributes)}`);
 
-                    // Process the message here
-                    // For example, you might want to check for new emails when a notification arrives
-                    await this.processGmailNotification(message);
+                    // we need to add the email to a queue on the event bus to be processed if we want to use a pull sub from the 
+                    await this.processGmailNotification({ message, processor });
 
                     // Acknowledge the message after processing it
                     message.ack();
@@ -220,32 +231,67 @@ export class GmailClient extends ILockable implements IEmailClient {
     /**
      * Processes Gmail notifications received from PubSub.
      * This method is called when a new message is received from the PubSub subscription.
-     * It parses the message data and fetches new emails if necessary.
+     * It parses the message data and fetches new emails using the historyId provided in the notification.
      * 
      * @param message - The PubSub message containing Gmail notification data
      * @returns {Promise<void>} A promise that resolves when the notification is processed
      */
-    private async processGmailNotification(message: Message): Promise<void> {
+    private async processGmailNotification({ message, processor }: { message: Message, processor: (email: Email) => Promise<void> }): Promise<void> {
         try {
-            // The message data is a base64-encoded string
-            const data = JSON.parse(Buffer.from(message.data.toString(), 'base64').toString());
-
+            const data = JSON.parse(message.data.toString());
             this.logger.info('Processing Gmail notification:', { data });
 
-            // Check if this is a Gmail notification
-            if (data.emailAddress) {
-                // Fetch recent emails - you might want to adjust the count and time window
-                const recentEmails = await this.fetchLastEmails({ count: 10, lastNHours: 1 });
-                this.logger.info(`Fetched ${recentEmails.length} recent emails after notification`);
+            // Check if this is a Gmail notification with historyId
+            if (data.emailAddress && data.historyId) {
+                const emailAddress = data.emailAddress;
+                const historyId = data.historyId;
 
-                // Here you could trigger email categorization or other processing
-                // For example:
-                // for (const email of recentEmails) {
-                //     // Process each email
-                // }
+                this.logger.info(`Received notification for ${emailAddress} with historyId: ${historyId}`);
+
+                // Fetch history to get changes since the last historyId
+                const historyResponse = await (await this.getHttpGoogleClient()).users.history.list({
+                    userId: 'me',
+                    startHistoryId: historyId,
+                    historyTypes: this.historyTypes // TODO: Check if this is all we want to check
+                });
+
+                const history = historyResponse.data.history || [];
+                this.logger.info(`Found ${history.length} history records since historyId ${historyId}`);
+                if (history.length === 0) {
+                    this.logger.warn(`Received notification for ${data.emailAddress} with historyId: ${data.historyId} but no history records found`);
+                }
+
+                // Process each history record
+                for (const record of history) {
+                    // Process messages that were added
+                    if (record.messagesAdded) {
+                        for (const messageAdded of record.messagesAdded) {
+                            if (messageAdded.message && messageAdded.message.id) {
+                                // Fetch the full message details
+                                const msgDetail = await (await this.getHttpGoogleClient()).users.messages.get({
+                                    userId: 'me',
+                                    id: messageAdded.message.id
+                                });
+
+                                // Convert to our Email model
+                                const email = this.emailAdaptor.adapt(msgDetail.data);
+                                this.logger.info(`New email received: ${email.subject}`);
+
+                                await this.appendHistoryIdToProcessedObjectHistoryIfNew({ historyId, email });
+                            }
+                        }
+                    }
+
+                    // You can also process other history types like labelAdded if needed
+                }
+
+
+                // Store the latest historyId for future reference
+                // You might want to persist this in a database
+                // this.lastHistoryId = historyId;
             }
         } catch (error) {
-            this.logger.error('Error processing Gmail notification:', { error });
+            this.logger.error(`Error processing Gmail notification for message: ${JSON.stringify(message)}`, { error, message });
             throw error;
         }
     }
@@ -400,5 +446,24 @@ export class GmailClient extends ILockable implements IEmailClient {
             createdAt: new Date(),
         });
         return email;
+    }
+
+    private async appendHistoryIdToProcessedObjectHistoryIfNew({ historyId, email }: { historyId: number, email: Email }): Promise<void> {
+        // Check if the email has already been processed from the db, if not, process it
+        const processedObject = await this.processedObjectRepo.findByTimeRange({
+            lastNHours: 24,
+            objectType: ObjectType.EMAIL
+        });
+        if (!processedObject) {
+            // Save to processed objects log
+            await this.processedObjectRepo.save({
+                project_id: email.threadId, // You might want to implement proper project ID logic
+                thread_id: email.threadId,
+                message_id: email.messageId,
+                type: ObjectType.EMAIL,
+                result: JSON.stringify(email),
+                object_timestamp: new Date(email.timestamp)
+            });
+        }
     }
 } 

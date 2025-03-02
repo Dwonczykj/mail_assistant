@@ -102,3 +102,16 @@ main().catch((error: any) => {
     console.error("Error in daemon:", error);
     process.exit(1);
 });
+
+
+// TODO: 
+// Fixes - Fix the continuous reauth issue for daemon constantly needing to run google-localauth authenticate due to loadCredentails not working
+// - Run Daemon to register gmail to pubsub
+// - Run WebAPI
+// - Run NGrok
+// - Send Test Message to Pub/Sub to check that webapi webhook gets the callback data
+// - Ack the message with a post back from webapi to pubsub
+// - Receive Test Email to check the webhook for emails
+// - Ack the message with a post back from webapi to pubsub
+// - Check Daemon Pull Sub?
+// - Add webapi endpoint to check lifetime of pubsub subscription for both config.pull and push subscriptions

@@ -7,6 +7,8 @@ export enum AuthProvider {
     LOCAL = 'local'
 }
 
+const redirectUrisSeparator = ' ; ';
+
 @Entity('auth_users')
 export class AuthUser {
     @PrimaryGeneratedColumn('uuid')
@@ -29,6 +31,9 @@ export class AuthUser {
     refreshToken!: string;
 
     @Column({ nullable: true })
+    redirectUris!: string;
+
+    @Column({ nullable: true })
     expiryDate!: Date;
 
     @Column({ nullable: false })
@@ -43,4 +48,12 @@ export class AuthUser {
 
     @UpdateDateColumn()
     updatedAt!: Date;
+
+    setRedirectUris(data: string[]) {
+        this.redirectUris = data.join(redirectUrisSeparator);
+    }
+
+    getRedirectUris(): string[] {
+        return this.redirectUris.split(redirectUrisSeparator);
+    }
 } 

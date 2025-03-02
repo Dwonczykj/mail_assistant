@@ -60,7 +60,11 @@ export class EmailServiceManager {
 
     public async registerMailboxListeners(): Promise<void> {
         for (const service of this.emailServices) {
-            await service.listenerService.start();
+            await service.listenerService.start({
+                processEmailCallback: async (email) => {
+                    await this.processEmail({ email, service });
+                }
+            });
         }
         this.logger.info('All mailbox listeners registered successfully');
     }

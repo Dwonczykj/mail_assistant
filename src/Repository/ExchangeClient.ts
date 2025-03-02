@@ -46,7 +46,11 @@ export class ExchangeClient extends ILockable implements IEmailClient {
      * Uses Microsoft Graph API (or the older Outlook REST API, if applicable) to create a webhook subscription on the mailbox. 
      * It subscribes to changes (for example, new messages in the Inbox) by specifying a callback URL to the webapi webhook.
      */
-    public async listenForIncomingEmails(): Promise<void> {
+    public async listenForIncomingEmails({
+        processEmailCallback
+    }: {
+        processEmailCallback: (email: Email) => Promise<void>
+    }): Promise<void> {
         try {
             const accessToken = await this.getExchangeClientAccessToken();
             const response = await fetch('https://graph.microsoft.com/v1.0/subscriptions', {
