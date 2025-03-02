@@ -1,4 +1,4 @@
-import { Controller, Get, Post, UseGuards, Inject, Res } from '@nestjs/common';
+import { Controller, Get, Post, UseGuards, Inject, Res, Req } from '@nestjs/common';
 import { Response } from 'express';
 import { EmailServiceManager } from '../../EmailService/EmailServiceManager';
 import { AuthGuard } from '@nestjs/passport';
@@ -21,13 +21,6 @@ export class WebhookController {
     @UseGuards(JwtAuthGuard)
     async registerGmailWebhook(@Res() res: Response) {
         try {
-            // Ensure we're authenticated
-            const isAuthenticated = await this.emailServiceManager.authenticated;
-
-            if (!isAuthenticated) {
-                await this.emailServiceManager.authenticate();
-            }
-
             // Register the mailbox listeners
             await this.emailServiceManager.registerMailboxListeners();
 
@@ -52,15 +45,14 @@ export class WebhookController {
      */
     @Post('unregister-gmail')
     @UseGuards(JwtAuthGuard)
-    async unregisterGmailWebhook(@Res() res: Response) {
+    async unregisterGmailWebhook(
+        @Req() req: Request,
+        @Res() res: Response,
+    ) {
         try {
-            // Ensure we're authenticated
-            const isAuthenticated = await this.emailServiceManager.authenticated;
-
-            if (!isAuthenticated) {
-                await this.emailServiceManager.authenticate();
+            if ('user' in req) {
+                this.logger.debug('User found in POST request webhook/unregister-gmail:', { user: req.user });
             }
-
             // Destroy the mailbox listeners
             await this.emailServiceManager.destroyMailboxListeners();
 
@@ -86,8 +78,6 @@ export class WebhookController {
     @UseGuards(JwtAuthGuard)
     async getGmailWebhookStatus(@Res() res: Response) {
         try {
-            const isAuthenticated = await this.emailServiceManager.authenticated;
-
             // Get all email services
             const emailServices = await this.emailServiceManager.getEmailServices();
 
@@ -98,7 +88,6 @@ export class WebhookController {
             const listenerStatus = gmailService.listenerService.isActive();
 
             return res.status(200).json({
-                authenticated: isAuthenticated,
                 listenerActive: listenerStatus,
                 serviceCount: emailServices.length
             });
@@ -119,7 +108,6 @@ export class WebhookController {
     @Post('dev-register-gmail')
     async devRegisterGmailWebhook(@Res() res: Response) {
         try {
-            await this.emailServiceManager.authenticate();
             await this.emailServiceManager.registerMailboxListeners();
 
             this.logger.info('Gmail webhook registration successful (dev mode)');

@@ -5,13 +5,12 @@ import { ILogger } from "../lib/logger/ILogger";
 import { EmailService } from "./EmailService";
 import { ICategoriser } from "../Categoriser/ICategoriser";
 import { IMailListener } from "./IMailListener";
-import { GmailAdaptor } from "../models/GmailAdaptor";
 import { IEmailAdaptor } from "../models/IAdaptorForEmail";
-import { gmail_v1 } from "googleapis";
+// import { gmail_v1 } from "googleapis"; // TODO: replace this exchange api package if there is one
 import { ExchangeClient } from "../Repository/ExchangeClient";
 import { ExchangeAdaptor } from "../models/ExchangeAdaptor";
 @Injectable()
-export class ExchangeService extends EmailService {
+export class ExchangeService extends EmailService<any> {
     readonly name: string = "exchange";
 
     constructor(

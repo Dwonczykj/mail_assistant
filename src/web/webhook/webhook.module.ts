@@ -1,13 +1,13 @@
 import { WebhookController } from './webhook.controller';
 import { EmailServiceManager } from '../../EmailService/EmailServiceManager';
 import { GmailService } from '../../EmailService/GmailService';
-import { GoogleAuthFactoryService } from '../../lib/auth/services/google-auth-factory.service';
+// import { GoogleAuthFactoryService } from '../../lib/auth/services/google-auth-factory.service';
 import { ProcessedObjectRepository } from '../../Repository/ProcessedObjectRepository';
 import { CategoriserFactory } from '../../Categoriser/CategoriserFactory';
 import { DatabaseInitializerService } from '../../data/data-source';
 import { GmailListenerService } from '../../EmailService/GmailListener';
-import { DesktopGoogleAuthService } from '../../lib/auth/services/desktop-google-auth.service';
-import { WebGoogleAuthService } from '../../lib/auth/services/web-google-auth.service';
+import { WebGoogleAuthService2 } from '../../lib/auth/services/desktop-google-auth.service';
+import { AppModule } from '../app.module';
 import { WinstonLogger } from '../../lib/logger';
 import { createRedisClient } from '../../lib/redis/RedisProvider';
 import { GoogleAuthForWeb } from '../../lib/utils/gmailAuth';
@@ -24,7 +24,6 @@ import { config } from '../../Config/config';
 import { UserCredentialsService } from '../../lib/auth/services/user-credentials.service';
 import { User } from '../../data/entity/User';
 import { AuthUser } from '../../data/entity/AuthUser';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { ServiceUserService } from '../../lib/auth/services/service-user.service';
 
 @Module({})
@@ -33,8 +32,9 @@ export class WebhookModule {
         return {
             module: WebhookModule,
             imports: [
+                AppModule,
                 PassportModule.register({ defaultStrategy: 'google' }),
-                TypeOrmModule.forFeature([User, AuthUser], DatabaseInitializerService.getDataSource()),
+                // TypeOrmModule.forFeature([User, AuthUser], DatabaseInitializerService.getDataSource()),
                 JwtModule.register({
                     secret: config.jwt.secret,
                     signOptions: { expiresIn: config.jwt.expiresIn },
@@ -44,20 +44,19 @@ export class WebhookModule {
             providers: [
                 AuthService,
                 // GmailInitService,
-                DatabaseInitializerService,
-                GoogleAuthFactoryService,
-                WebGoogleAuthService,
-                DesktopGoogleAuthService,
+                // DatabaseInitializerService,
+                WebGoogleAuthService2,
                 UserCredentialsService,
                 ServiceUserService,
                 {
                     provide: 'APP_ENVIRONMENT',
                     useValue: environment
                 },
-                {
-                    provide: 'GoogleAuthFactoryService',
-                    useClass: GoogleAuthFactoryService
-                },
+                // GoogleAuthFactoryService,
+                // {
+                //     provide: 'GoogleAuthFactoryService',
+                //     useClass: GoogleAuthFactoryService
+                // },
                 EmailServiceManager,
                 {
                     provide: 'EmailServiceManager',
@@ -128,7 +127,6 @@ export class WebhookModule {
                     provide: 'ProcessedObjectRepository',
                     useClass: ProcessedObjectRepository,
                 },
-                GoogleAuthFactoryService,
 
             ],
         };

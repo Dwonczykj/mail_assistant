@@ -6,13 +6,12 @@ import { IAmEmailService } from "./IAmEmailService";
 import { ILogger } from "../lib/logger/ILogger";
 import { Injectable, Inject } from "@nestjs/common";
 import { IMailListener } from "./IMailListener";
-import { IReceiveOAuthClient } from "../lib/utils/IGoogleAuth";
 import { OAuth2Client } from "google-auth-library";
 import { IEmailAdaptor } from "../models/IAdaptorForEmail";
 import { GmailClient } from "../Repository/GmailClient";
 
 @Injectable()
-export abstract class EmailService implements IAmEmailService {
+export abstract class EmailService<TProviderEmail extends any> implements IAmEmailService<TProviderEmail> {
     abstract readonly name: string;
     abstract readonly listenerService: IMailListener;
 
@@ -21,37 +20,6 @@ export abstract class EmailService implements IAmEmailService {
         @Inject("ILogger") private readonly logger: ILogger,
         @Inject("ICategoriser") private readonly categoriser: ICategoriser,
     ) { }
-
-    public get _emailClient(): IEmailClient {
-        return this.emailClient;
-    }
-
-    public get emailClientAuthenticationModule() {
-        if (this.emailClient instanceof GmailClient) {
-            return {
-                httpGoogleClient: this.emailClient.httpGoogleClient,
-                googleAuthService: this.emailClient["googleAuthService"]
-            };
-        } else {
-            return {
-                httpGoogleClient: null,
-                googleAuthService: null
-            };
-        }
-    }
-
-    public async authenticate({ oAuthClient }: { oAuthClient: OAuth2Client }): Promise<void> {
-        await this.emailClient.authenticate({ oAuthClient });
-        await this.listenerService.authenticate({ oAuthClient });
-    }
-
-    public get authenticated(): Promise<boolean> {
-        return this.emailClient.authenticated;
-    }
-
-    public async needsTokenRefresh(): Promise<boolean> {
-        return this.emailClient.needsTokenRefresh();
-    }
 
     public abstract getEmailAdaptor(): IEmailAdaptor<any>;
 

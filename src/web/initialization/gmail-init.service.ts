@@ -12,7 +12,6 @@ export class GmailInitService implements OnApplicationBootstrap, OnApplicationSh
 
     async onApplicationBootstrap() {
         this.logger.info('Initializing Gmail service...');
-        await this.emailServiceManager.authenticate();
         await this.emailServiceManager.registerMailboxListeners();
         this.logger.info('Gmail service initialized successfully');
     }

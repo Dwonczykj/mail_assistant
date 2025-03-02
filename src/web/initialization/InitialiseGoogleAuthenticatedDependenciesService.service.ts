@@ -15,7 +15,6 @@ export class InitialiseGoogleAuthenticatedDependenciesService implements OnAppli
     async initialiseDependencies(token: string) {
         this.logger.info('Initializing Gmail service...');
         // TODO: Can we use our own jwt token that we provide here to retrieve google auth credentials?
-        await this.emailServiceManager.authenticate();
         await this.emailServiceManager.registerMailboxListeners();
         this.logger.info('Gmail service initialized successfully');
     }

@@ -11,17 +11,11 @@ export interface IGoogleAuth {
     refreshToken(): Promise<void>;
 }
 
-export interface IReceiveOAuthClient {
-    authenticate({ oAuthClient }: { oAuthClient: OAuth2Client }): Promise<void>;
-    get authenticated(): Promise<boolean>;
-    needsTokenRefresh(): Promise<boolean>;
-}
-
 export interface IGetOAuthClient {
     authenticate(): Promise<OAuth2Client | null>;
     get oAuthClient(): OAuth2Client;
 }
 
-export interface IHaveGoogleClient<T> extends IReceiveOAuthClient {
+export interface IHaveGoogleClient<T> {
     get httpGoogleClient(): T | null;
 }

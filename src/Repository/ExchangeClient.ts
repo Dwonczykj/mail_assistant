@@ -1,119 +1,43 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { OAuth2Client, Credentials } from 'google-auth-library';
 import { IEmailClient } from './IEmailClient';
-import { IHaveGoogleClient, IReceiveOAuthClient } from '../lib/utils/IGoogleAuth';
 import { Email } from '../models/Email';
 import { ILabel } from '../models/Label';
 import { ILogger } from '../lib/logger/ILogger';
 import { IFyxerActionRepository } from './IFyxerActionRepository';
-import { AuthEnvironment, GoogleAuthFactoryService } from '../lib/auth/services/google-auth-factory.service';
-import { IGoogleAuthService } from '../lib/auth/interfaces/google-auth.interface';
+// import { AuthEnvironment, GoogleAuthFactoryService } from '../lib/auth/services/google-auth-factory.service';
+import { IGoogleAuthService, IGoogleAuthService2 } from '../lib/auth/interfaces/google-auth.interface';
 import { config } from '../Config/config';
 import { ExchangeAdaptor } from '../models/ExchangeAdaptor';
+import { ILockable } from '../lib/auth/interfaces/ILockable';
 
 /**
  * Microsoft Exchange Email Client implementation
  * Connects to Microsoft Exchange email accounts and implements the IEmailClient interface
  */
 @Injectable()
-export class ExchangeClient implements IEmailClient, IHaveGoogleClient<any> {
-    private authClient: OAuth2Client | null = null;
-    private _httpGoogleClient: any | null = null;
-    private credentials: Credentials | null = null;
-    private readonly emailAdaptor: ExchangeAdaptor;
+export class ExchangeClient extends ILockable implements IEmailClient {
+    public readonly name: string = "exchange";
+    private readonly emailAdaptor: ExchangeAdaptor = new ExchangeAdaptor();
     private exchangeLabels: any[] = [];
     private exchangeLabelsExpireAt: Date | null = null;
-    private labelCreationLock: Promise<void> = Promise.resolve();
-    public readonly name: string = "exchange";
-    private googleAuthService: IGoogleAuthService;
 
-    public get httpGoogleClient(): any | null {
-        return this._httpGoogleClient;
-    }
-
-    public get authenticated(): Promise<boolean> {
-        return Promise.resolve(this.authClient !== null);
-    }
-
-    public get credentials_access_token(): string | null {
-        return this.credentials?.access_token || null;
-    }
-
-    public get credentials_expiry_date(): number | null {
-        return this.credentials?.expiry_date || null;
-    }
 
     constructor(
         @Inject('ILogger') private readonly logger: ILogger,
         @Inject('IFyxerActionRepository') private readonly fyxerActionRepo: IFyxerActionRepository,
-        private readonly googleAuthFactoryService: GoogleAuthFactoryService,
-        @Inject('APP_ENVIRONMENT') private readonly environment: AuthEnvironment,
+        @Inject('IGoogleAuthService') private readonly googleAuthService: IGoogleAuthService2,
     ) {
-        this.authClient = null;
-        this.emailAdaptor = new ExchangeAdaptor();
-        this.googleAuthService = this.googleAuthFactoryService.getAuthService(this.environment);
+        super();
     }
 
-    public async authenticate({ oAuthClient }: { oAuthClient: OAuth2Client }): Promise<void> {
-        this.authClient = oAuthClient;
-        if (!this.authClient || !this.authClient.credentials.refresh_token) {
-            const newCreds = await this.googleAuthService.refreshTokenIfNeeded();
-            this.authClient.setCredentials({
-                access_token: newCreds.accessToken,
-                refresh_token: newCreds.refreshToken,
-                expiry_date: newCreds.expiryDate ? newCreds.expiryDate.getTime() : null,
-            });
-        }
-
-        // Initialize Microsoft Exchange client here
-        // This is a placeholder - actual implementation would use Microsoft Graph API or Exchange Web Services
-        this._httpGoogleClient = {}; // Placeholder for Exchange client
-
-        this.logger.info('Exchange client authenticated');
-    }
-
-    public async needsTokenRefresh(): Promise<boolean> {
-        return this.googleAuthService.needsTokenRefresh();
-    }
-
-    private async withLock<T>(operation: () => Promise<T>): Promise<T> {
-        const unlock = await this.acquireLock();
-        try {
-            return await operation();
-        } finally {
-            unlock();
-        }
-    }
-
-    /**
-     * Acquires a lock on the label creation process.
-     * This ensures that only one label creation can happen at a time.
-     * @returns A function to release the lock.
-     */
-    private acquireLock(): Promise<() => void> {
-        let unlockNext: () => void;
-        const previousLock = this.labelCreationLock;
-        this.labelCreationLock = new Promise<void>((resolve) => {
-            unlockNext = resolve;
-        });
-
-        return previousLock.then(() => unlockNext);
-    }
-
-    private async refreshAuthClient(): Promise<void> {
-        const newCreds = await this.googleAuthService.refreshTokenIfNeeded();
-        if (!this.authClient) {
+    private async getExchangeClientAccessToken(): Promise<string> {
+        const exchangeClientAccessToken = await this.googleAuthService.getAuthenticatedClient();
+        const accessToken = exchangeClientAccessToken?.credentials?.access_token;
+        if (!accessToken) {
             throw new Error('Exchange client not authenticated');
         }
-        this.authClient.setCredentials({
-            access_token: newCreds.accessToken,
-            refresh_token: newCreds.refreshToken,
-            expiry_date: newCreds.expiryDate ? newCreds.expiryDate.getTime() : null,
-        });
-
-        // Refresh Exchange client connection
-        // Placeholder for actual implementation
-        this._httpGoogleClient = {}; // Placeholder for Exchange client
+        return accessToken;
     }
 
     /**
@@ -124,30 +48,7 @@ export class ExchangeClient implements IEmailClient, IHaveGoogleClient<any> {
      */
     public async listenForIncomingEmails(): Promise<void> {
         try {
-            // Check if we have valid auth
-            if (!this.authClient || !this.httpGoogleClient) {
-                this.logger.error('Exchange client not authenticated');
-                throw new Error('Exchange client not authenticated. Please authenticate first.');
-            }
-
-            // Check token validity and refresh if needed
-            try {
-                await this.refreshAuthClient();
-                if (!this.authClient?.credentials.access_token) {
-                    throw new Error('No valid access token');
-                }
-            } catch (error) {
-                this.logger.error('Failed to get access token', { "error": error });
-                throw error;
-            }
-
-            const accessToken = this.authClient?.credentials.access_token;
-            const refreshToken = this.authClient?.credentials.refresh_token;
-            const expiryDate = this.authClient?.credentials.expiry_date;
-
-            if (!accessToken) {
-                throw new Error('No valid access token for Exchange client');
-            }
+            const accessToken = await this.getExchangeClientAccessToken();
             const response = await fetch('https://graph.microsoft.com/v1.0/subscriptions', {
                 method: 'POST',
                 headers: {

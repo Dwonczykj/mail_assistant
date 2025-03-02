@@ -47,42 +47,6 @@ export const exchangePubSubConfig: PubSubConfig = {
     subscriptionNamePull: process.env.GOOGLE_EXCHANGE_SUBSCRIPTION_PULL || `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/subscriptions/exchange-notifications-sub-pull`
 };
 
-const google = {
-    pubSubConfig: gmailPubSubConfig,
-    clientId: process.env.GOOGLE_CLIENT_ID || '',
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-    redirectUri: process.env.GOOGLE_REDIRECT_URI || `http://localhost:${webApiPort}/auth/google/callback`, // http://localhost:3000/auth/google/callback?code=4/0ASVgi3LqZJOmU7GrtxAykTlwUuKVD14UhQeV8TSrFIBmNl-u2iEMyVUiw3VgIiu1ZielNQ&scope=https://www.googleapis.com/auth/gmail.settings.sharing%20https://www.googleapis.com/auth/gmail.settings.basic%20https://www.googleapis.com/auth/gmail.modify
-    scopes: [
-        'https://www.googleapis.com/auth/documents.readonly',
-        'https://www.googleapis.com/auth/drive.metadata.readonly',
-        'https://www.googleapis.com/auth/gmail.readonly',
-        'https://www.googleapis.com/auth/gmail.modify',
-        'https://www.googleapis.com/auth/gmail.compose',
-        'https://www.googleapis.com/auth/gmail.send',
-        'https://www.googleapis.com/auth/gmail.labels',
-        'https://www.googleapis.com/auth/gmail.settings.basic',
-        'https://www.googleapis.com/auth/gmail.settings.sharing',
-    ],
-    gmailTopic: process.env.GOOGLE_TOPIC || '',
-    exchangeTopic: process.env.GOOGLE_EXCHANGE_TOPIC || '',
-    gmailSubscription: process.env.GOOGLE_SUBSCRIPTION || '',
-    googleProjectId: process.env.GOOGLE_PROJECT_ID || '',
-    llmModelsNames: [
-        "gemini-pro",
-        "gemini-pro-vision",
-        "gemini-1.5-flash",
-        "gemini-1.5-flex",
-        "gemini-1.5-pro",
-
-
-    ]
-}
-
-const exchange = {
-    pubSubConfig: exchangePubSubConfig,
-    subscriptionUrl: process.env.EXCHANGE_SUBSCRIPTION_URL || '',
-}
-
 type TokenCredentials = {
     accessToken: string;
     expiryDate: number;
@@ -138,20 +102,57 @@ const readTokenCredentialsSync = (path: string): TokenCredentials | null => {
 
 const serviceUserCredentials: TokenCredentials | null = readTokenCredentialsSync(tokenPath.daemon);
 
+const google = {
+    pubSubConfig: gmailPubSubConfig,
+    clientId: process.env.GOOGLE_CLIENT_ID || '',
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+    redirectUri: process.env.GOOGLE_REDIRECT_URI || `http://localhost:${webApiPort}/auth/google/callback`, // http://localhost:3000/auth/google/callback?code=4/0ASVgi3LqZJOmU7GrtxAykTlwUuKVD14UhQeV8TSrFIBmNl-u2iEMyVUiw3VgIiu1ZielNQ&scope=https://www.googleapis.com/auth/gmail.settings.sharing%20https://www.googleapis.com/auth/gmail.settings.basic%20https://www.googleapis.com/auth/gmail.modify
+    scopes: [
+        'https://www.googleapis.com/auth/documents.readonly',
+        'https://www.googleapis.com/auth/drive.metadata.readonly',
+        'https://www.googleapis.com/auth/gmail.readonly',
+        'https://www.googleapis.com/auth/gmail.modify',
+        'https://www.googleapis.com/auth/gmail.compose',
+        'https://www.googleapis.com/auth/gmail.send',
+        'https://www.googleapis.com/auth/gmail.labels',
+        'https://www.googleapis.com/auth/gmail.settings.basic',
+        'https://www.googleapis.com/auth/gmail.settings.sharing',
+    ],
+    gmailTopic: process.env.GOOGLE_TOPIC || '',
+    exchangeTopic: process.env.GOOGLE_EXCHANGE_TOPIC || '',
+    gmailSubscription: process.env.GOOGLE_SUBSCRIPTION || '',
+    googleProjectId: process.env.GOOGLE_PROJECT_ID || '',
+    llmModelsNames: [
+        "gemini-pro",
+        "gemini-pro-vision",
+        "gemini-1.5-flash",
+        "gemini-1.5-flex",
+        "gemini-1.5-pro",
+
+
+    ],
+    credentialsPath: {
+        daemon: path.join(process.cwd(), 'Google Cloud Client Secret for Desktop.json'),
+        web: path.join(process.cwd(), 'Google Cloud Client Secret for WebApp.json'),
+    },
+    tokenPath: tokenPath,
+}
+
+const exchange = {
+    pubSubConfig: exchangePubSubConfig,
+    subscriptionUrl: process.env.EXCHANGE_SUBSCRIPTION_URL || '',
+}
+
 export const config = {
+    apiPort: webApiPort,
+    apiBaseUrl: webApiBaseUrl,
     apiKeys,
     langchain,
     openrouter,
     google,
     exchange,
-    tokenPath: {
-        daemon: path.join(process.cwd(), 'google_auth_daemon_token.json'),
-        web: path.join(process.cwd(), 'google_auth_web_token.json'),
-    },
-    credentialsPath: {
-        daemon: path.join(process.cwd(), 'Google Cloud Client Secret for Desktop.json'),
-        web: path.join(process.cwd(), 'Google Cloud Client Secret for WebApp.json'),
-    },
+    tokenPath: google.tokenPath,
+    credentialsPath: google.credentialsPath,
     gmailClientId: google.clientId,
     gmailClientSecret: google.clientSecret,
     gmailRedirectUri: google.redirectUri,

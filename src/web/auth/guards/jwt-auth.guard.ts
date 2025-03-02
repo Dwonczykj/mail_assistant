@@ -1,6 +1,7 @@
 import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { JwtService } from '@nestjs/jwt';
+import { RequestContext } from '../../../lib/context/request-context';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -28,6 +29,14 @@ export class JwtAuthGuard implements CanActivate {
 
             // Store the payload on the request object
             request.user = payload;
+
+            // Also update the request context if it exists so that we can access the user in the global context
+            try {
+                RequestContext.set({ user: payload });
+            } catch (error) {
+                // Context might not be initialized yet, that's okay
+            }
+
             return true;
         } catch (error) {
             throw new UnauthorizedException('Invalid token');

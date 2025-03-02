@@ -1,35 +1,20 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { GmailClient } from '../../Repository/GmailClient';
 import { config } from '../../Config/config';
 import Redis from 'ioredis';
 import { ILogger } from '../../lib/logger/ILogger';
-import { redisConfig } from '../../lib/redis/RedisConfig';
-import { IGoogleAuth } from '../../lib/utils/IGoogleAuth';
-import { AuthEnvironment, GoogleAuthFactoryService } from '../../lib/auth/services/google-auth-factory.service';
-import { IGoogleAuthService } from '../../lib/auth/interfaces/google-auth.interface';
+// import { AuthEnvironment, GoogleAuthFactoryService } from '../../lib/auth/services/google-auth-factory.service';
+import { IGoogleAuthService2 } from '../../lib/auth/interfaces/google-auth.interface';
 import { JwtService } from '@nestjs/jwt';
 import { google } from 'googleapis';
 import { Credentials, OAuth2Client } from 'google-auth-library';
 @Injectable()
 export class AuthService {
-    private googleAuthService: IGoogleAuthService;
     constructor(
-        @Inject('REDIS_CLIENT')
-        private readonly redis: Redis,
-        @Inject('ILogger')
-        private readonly logger: ILogger,
-        @Inject('GoogleAuthFactoryService')
-        private readonly googleAuthFactoryService: GoogleAuthFactoryService,
-        @Inject('APP_ENVIRONMENT')
-        private readonly environment: AuthEnvironment,
+        @Inject('REDIS_CLIENT') private readonly redis: Redis,
+        @Inject('ILogger') private readonly logger: ILogger,
         private readonly jwtService: JwtService,
-        // @Inject('IGoogleAuth')
-        // private readonly googleAuth: IGoogleAuth,
-        // @Inject('GmailClient')
-        // private readonly gmailClient: GmailClient,
-    ) {
-        this.googleAuthService = this.googleAuthFactoryService.getAuthService(this.environment);
-    }
+        @Inject('IGoogleAuthService') private readonly googleAuthService: IGoogleAuthService2,
+    ) {}
 
     async dummyAuthNoAuthGuard({ code, scope, prompt }: { code: string, scope: string | null, prompt: string | null }): Promise<void> {
         // Set up the OAuth2 client.
@@ -86,14 +71,6 @@ export class AuthService {
         } catch (error) {
             this.logger.error('Error setting up push notifications:', { error: `Error: ${error}` });
         }
-    }
-
-
-    async getGoogleAuthUrl(): Promise<string> {
-        // TODO: Add redis cache once working within the google auth service
-        const authUrl = this.googleAuthService.getAuthUrl();
-        this.logger.debug(`OAuth URL generated: ${authUrl}`);
-        return authUrl;
     }
 
     /**

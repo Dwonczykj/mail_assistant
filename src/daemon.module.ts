@@ -1,60 +1,60 @@
 import 'reflect-metadata';
 import { Module, Global, DynamicModule, NestModule, MiddlewareConsumer } from '@nestjs/common';
-import { AuthModule } from './auth/auth.module';
 import { ConfigModule } from '@nestjs/config';
 // import { GmailInitService } from './initialization/gmail-init.service';
-import { createRedisClient } from '../lib/redis/RedisProvider';
-import { WinstonLogger } from '../lib/logger/WinstonLogger';
-import { GmailWebhookController } from './controllers/gmail-webhook.controller';
-import { GoogleAuthForWeb } from '../lib/utils/gmailAuth';
-import { GmailListenerService } from '../EmailService/GmailListener';
-import { CategoriserFactory } from '../Categoriser/CategoriserFactory';
-import { MockEmailRepository } from '../Repository/MockEmailRepository';
-import { FyxerActionRepository } from '../Repository/FyxerActionRepository';
-import { DatabaseInitializerService } from '../data/data-source';
-import { ProcessedObjectRepository } from '../Repository/ProcessedObjectRepository';
-import { GmailClient } from '../Repository/GmailClient';
-import { EmailServiceManager } from '../EmailService/EmailServiceManager';
-import { ILogger } from '../lib/logger/ILogger';
-import { GmailService } from '../EmailService/GmailService';
-import { GoogleAuthModule } from '../lib/auth/google-auth.module';
-// import { AuthEnvironment, GoogleAuthFactoryService } from '../lib/auth/services/google-auth-factory.service';
-import { DesktopGoogleAuthService2, WebGoogleAuthService2 } from '../lib/auth/services/desktop-google-auth.service';
-import { ExchangeWebhookController } from './controllers/exchange-webhook.controller';
-import { PubSubGmailSubscriptionPushProcessor } from './controllers/PubSubGmailSubscriptionPushProcessor.service';
-import { ExchangeEmailGraphAPIPushProcessor } from './controllers/ExchangeEmailGraphAPIPushProcessor.service';
-import { ExchangeEmailGraphAPIPubSubPublishProcessor } from './controllers/ExchangeEmailGraphAPIPubSubPublishProcessor.service';
-import { WebhookModule } from './webhook/webhook.module';
+import { createRedisClient } from './lib/redis/RedisProvider';
+import { WinstonLogger } from './lib/logger/WinstonLogger';
+import { GoogleAuthForWeb } from './lib/utils/gmailAuth';
+import { GmailListenerService } from './EmailService/GmailListener';
+import { CategoriserFactory } from './Categoriser/CategoriserFactory';
+import { MockEmailRepository } from './Repository/MockEmailRepository';
+import { FyxerActionRepository } from './Repository/FyxerActionRepository';
+import { DatabaseInitializerService } from './data/data-source';
+import { ProcessedObjectRepository } from './Repository/ProcessedObjectRepository';
+import { GmailClient } from './Repository/GmailClient';
+import { EmailServiceManager } from './EmailService/EmailServiceManager';
+import { ILogger } from './lib/logger/ILogger';
+import { GmailService } from './EmailService/GmailService';
+import { GoogleAuthModule } from './lib/auth/google-auth.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { AppController } from './app.controller';
-import { RequestContextMiddleware } from '../lib/context/request-context.middleware';
-import { AuthEnvironment } from '../lib/auth/services/google-auth-factory.service';
-import { User } from '../data/entity/User';
-import { AuthUser } from '../data/entity/AuthUser';
 import { DataSource } from 'typeorm';
-import { CurrentUserService } from '../lib/auth/services/current-user.service';
-import { ServiceUserService } from '../lib/auth/services/service-user.service';
-import { UserCredentialsService } from '../lib/auth/services/user-credentials.service';
+import { RequestContextMiddleware } from './lib/context/request-context.middleware';
+// import { AuthEnvironment, GoogleAuthFactoryService } from './lib/auth/services/google-auth-factory.service';
+import { DesktopGoogleAuthService2, WebGoogleAuthService2 } from './lib/auth/services/desktop-google-auth.service';
 
+import { AuthModule } from './web/auth/auth.module';
+import { GmailWebhookController } from './web/controllers/gmail-webhook.controller';
+import { ExchangeWebhookController } from './web/controllers/exchange-webhook.controller';
+import { PubSubGmailSubscriptionPushProcessor } from './web/controllers/PubSubGmailSubscriptionPushProcessor.service';
+import { ExchangeEmailGraphAPIPushProcessor } from './web/controllers/ExchangeEmailGraphAPIPushProcessor.service';
+import { ExchangeEmailGraphAPIPubSubPublishProcessor } from './web/controllers/ExchangeEmailGraphAPIPubSubPublishProcessor.service';
+import { WebhookModule } from './web/webhook/webhook.module';
+import { AppController } from './web/app.controller';
+import { AuthEnvironment } from './lib/auth/services/google-auth-factory.service';
+import { AuthUser } from './data/entity/AuthUser';
+import { User } from './data/entity/User';
+import { CurrentUserService } from './lib/auth/services/current-user.service';
+import { ServiceUserService } from './lib/auth/services/service-user.service';
+import { UserCredentialsService } from './lib/auth/services/user-credentials.service';
+import { RequestContext } from './lib/context/request-context';
+import { DaemonContextInitializerService } from './lib/context/daemon-context-initializer.service';
 
 @Global()
 @Module({})
-export class AppModule implements NestModule {
+export class DaemonModule implements NestModule {
     configure(consumer: MiddlewareConsumer) {
-        consumer
-            .apply(RequestContextMiddleware)
-            .forRoutes('*'); // Apply to all routes // TODO Is this ok?
+        // No middleware needed for daemon context
+        // We'll initialize RequestContext programmatically
     }
 
     static forRoot(environment: AuthEnvironment): DynamicModule {
         return {
-            module: AppModule,
+            module: DaemonModule,
             imports: [
                 TypeOrmModule.forRootAsync({
                     useFactory: () => (DatabaseInitializerService.getDataSource().options),
                 }),
                 TypeOrmModule.forFeature([User, AuthUser]),
-
                 // ConfigModule.forRoot({
                 //     isGlobal: true,
                 // }),
@@ -63,12 +63,9 @@ export class AppModule implements NestModule {
                 // WebhookModule.forRoot(environment),
             ],
             controllers: [
-                GmailWebhookController,
-                ExchangeWebhookController,
-                AppController,
+                /* No controllers as Daemon */
             ],
             providers: [
-                // GmailInitService,
                 {
                     provide: DataSource,
                     useFactory: () => DatabaseInitializerService.getDataSource(),
@@ -78,10 +75,15 @@ export class AppModule implements NestModule {
                 ServiceUserService,
                 CurrentUserService,
                 WebGoogleAuthService2,
-                // DesktopGoogleAuthService2,
+                DesktopGoogleAuthService2,
+                RequestContext, // Add RequestContext as a provider
+                {
+                    provide: 'RequestContext',
+                    useClass: RequestContext
+                },
                 {
                     provide: 'IGoogleAuthService',
-                    useExisting: WebGoogleAuthService2
+                    useExisting: DesktopGoogleAuthService2
                 },
                 {
                     provide: 'APP_ENVIRONMENT',
@@ -164,9 +166,9 @@ export class AppModule implements NestModule {
                     provide: 'ExchangeEmailGraphAPIPubSubPublishProcessor',
                     useClass: ExchangeEmailGraphAPIPubSubPublishProcessor
                 },
+                DaemonContextInitializerService,
             ],
             exports: [
-                DataSource,
                 EmailServiceManager,
                 {
                     provide: 'APP_ENVIRONMENT',
@@ -174,8 +176,10 @@ export class AppModule implements NestModule {
                 },
                 {
                     provide: 'IGoogleAuthService',
-                    useExisting: WebGoogleAuthService2
+                    useExisting: DesktopGoogleAuthService2
                 },
+                DataSource,
+                RequestContext, // Export RequestContext
             ]
         };
     }

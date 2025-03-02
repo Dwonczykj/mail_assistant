@@ -1,9 +1,14 @@
 import { OAuth2Client } from 'google-auth-library';
+import { User } from '../../../data/entity/User';
 
 export interface GoogleAuthCredentials {
   accessToken: string;
   refreshToken?: string;
   expiryDate?: Date;
+}
+
+export interface IGoogleAuthService2 {
+  getAuthenticatedClient(): Promise<OAuth2Client | null>;
 }
 
 export interface IGoogleAuthService {

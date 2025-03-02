@@ -9,7 +9,7 @@ import { GmailAdaptor } from "../models/GmailAdaptor";
 import { IEmailAdaptor } from "../models/IAdaptorForEmail";
 import { gmail_v1 } from "googleapis";
 @Injectable()
-export class GmailService extends EmailService {
+export class GmailService extends EmailService<gmail_v1.Schema$Message> {
     readonly name: string = "gmail";
 
     constructor(

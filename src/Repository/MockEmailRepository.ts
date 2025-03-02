@@ -13,7 +13,7 @@ export class MockEmailRepository implements IMockEmailRepository {
         @Inject('ILogger') private readonly logger: ILogger
     ) { }
 
-    async saveEmails(emails: { email: Email, service?: IAmEmailService }[]): Promise<void> {
+    async saveEmails(emails: { email: Email, service?: IAmEmailService<any> }[]): Promise<void> {
         const fss = require('fs');
         const fs = require('fs').promises;
         const path = require('path');

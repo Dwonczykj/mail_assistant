@@ -2,6 +2,7 @@ import { MockEmailRepository } from '../../src/Repository/MockEmailRepository';
 import { Email } from '../../src/models/Email';
 import { ILogger } from '../../src/lib/logger/ILogger';
 import { generateMockEmails } from '../mocks/mockEmail';
+import { IAmEmailService } from '../../src/EmailService/IAmEmailService';
 
 // Mock the fs modules
 jest.mock('fs', () => ({
@@ -108,7 +109,7 @@ describe('MockEmailRepository', () => {
         });
 
         it('should handle errors when reading existing emails', async () => {
-            const mockEmails: Email[] = generateMockEmails({ count: 1 });
+            const mockEmails: { email: Email, service?: IAmEmailService<any> }[] = generateMockEmails({ count: 1 });
 
             fss.existsSync.mockReturnValueOnce(true);
             fs.readFile.mockRejectedValueOnce(new Error('Read error'));

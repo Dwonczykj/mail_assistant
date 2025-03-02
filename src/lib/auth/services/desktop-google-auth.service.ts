@@ -1,15 +1,153 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { IGoogleAuthService, GoogleAuthCredentials } from '../interfaces/google-auth.interface';
+import { IGoogleAuthService, GoogleAuthCredentials, IGoogleAuthService2 } from '../interfaces/google-auth.interface';
 import { authenticate } from '@google-cloud/local-auth';
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import * as fs from 'fs';
+import * as fsp from 'fs/promises';
 import * as path from 'path';
 import * as http from 'http';
 import { URL } from 'url';
 import { config } from '../../../Config/config';
 import { ILogger } from '../../logger/ILogger';
 import { GoogleDesktopAuthError } from '../errors/googl-auth-errors';
+import { User } from '../../../data/entity/User';
+import { AuthProvider, AuthUser } from '../../../data/entity/AuthUser';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { CurrentUserService } from './current-user.service';
+
+
+@Injectable()
+export class DesktopGoogleAuthService2 implements IGoogleAuthService2 {
+  private readonly TOKEN_PATH = config.google.tokenPath.daemon;
+  private readonly CREDENTIALS_PATH = config.google.credentialsPath.daemon;
+  private readonly SCOPES = config.google.scopes;
+  constructor(
+    @Inject('ILogger') private readonly logger: ILogger,
+    private readonly currentUserService: CurrentUserService
+  ) { }
+
+  /**
+   * Loads the client from the token path
+   * @returns {Promise<OAuth2Client | null>} The loaded client or null if no cached token file is found
+   */
+  private async loadClient() {
+    try {
+      if ((fs.existsSync(this.TOKEN_PATH))) {
+        const token = JSON.parse((await fsp.readFile(this.TOKEN_PATH, 'utf8')));
+        const redirectUri = (token.redirect_uris as string[]).find(uri => uri.includes(`localhost:${config.apiPort}`)) || token.redirect_uris[0];
+
+        return new google.auth.OAuth2(
+          token.client_id, token.client_secret, redirectUri
+        );
+      }
+    } catch (error) {
+      return null;
+    }
+    return null;
+  }
+
+  private async createAndSaveTokenUsingClient({ client }: { client: OAuth2Client }) {
+    const content = await fsp.readFile(this.CREDENTIALS_PATH, 'utf8');
+    const keys = JSON.parse(content);
+    const key = keys.installed || keys.web;
+    const payload = JSON.stringify({
+      type: 'authorized_user',
+      client_id: key.client_id,
+      client_secret: key.client_secret,
+      refresh_token: client.credentials.refresh_token,
+    });
+    await fsp.writeFile(this.TOKEN_PATH, payload);
+  }
+
+  public async getAuthenticatedClient() {
+    // TODO: we shall pass a globbal service user here and use that to load the client from the DB
+    const user = await this.currentUserService.getCurrentUser();
+    const client = await this.loadClient();
+    if (client) {
+      return client;
+    }
+    const newClient = await authenticate({
+      scopes: this.SCOPES,
+      keyfilePath: this.CREDENTIALS_PATH,
+    });
+    if (newClient.credentials) {
+      // TODO: save against the global service user in the DB instead of to a file below
+      await this.createAndSaveTokenUsingClient({ client: newClient });
+    }
+    return newClient;
+  }
+
+}
+
+@Injectable()
+export class WebGoogleAuthService2 implements IGoogleAuthService2 {
+  private readonly SCOPES = config.google.scopes;
+  private authUsers: Record<string, AuthUser[]> = {};
+  constructor(
+    @InjectRepository(User)
+    private userRepository: Repository<User>,
+    @InjectRepository(AuthUser)
+    private authUserRepository: Repository<AuthUser>,
+    @Inject('ILogger') private readonly logger: ILogger,
+    private readonly currentUserService: CurrentUserService
+  ) { }
+
+  private async loadClientFromDB({ user }: { user: User }) {
+    // Our JWT stategy and RSA algorithm gives us the user object which we ca. use here to get the user auth object containign the access token (no refresh token on the web and no context of a cached token either)
+    // 1. Get the repo connection like we do in the auth contoller but just do it here instead of in teh guard, 
+    const { email } = user;
+    try {
+      // Find existing user or create a new one
+      let user = await this.userRepository.findOne({ where: { email } });
+
+      if (!user) {
+        return null;
+      }
+
+      // Find existing auth record or create a new one
+      let authUsers = await this.authUserRepository.find({
+        where: {
+          userId: user.id,
+        }
+      });
+      this.authUsers[user.id] = authUsers;
+
+      const authUser = authUsers.find(authUser => authUser.provider === AuthProvider.GOOGLE);
+      if (!authUser) {
+        return null;
+      }
+
+      const { accessToken } = authUser;
+
+      const oauth2Client = new google.auth.OAuth2(
+        config.google.clientId,
+        config.google.clientSecret,
+        config.google.redirectUri
+      );
+      oauth2Client.setCredentials({ access_token: accessToken });
+
+      return oauth2Client;
+    } catch (error) {
+      this.logger.error(`Failed to load client from DB for user: ${JSON.stringify(user)}`, { error: `${error}` });
+      return null;
+    }
+  }
+
+  public async getAuthenticatedClient(): Promise<OAuth2Client | null> {
+    // Use provided user or get from context
+    const user = await this.currentUserService.getCurrentUser();
+    const oauth2Client = await this.loadClientFromDB({ user });
+    if (!oauth2Client) {
+      this.logger.error(`Failed to load client from DB for user even though user should have been created if they didnt exist when they authenticated on the /auth/${AuthProvider.GOOGLE} route: ${JSON.stringify(user)}`);
+      return null;
+    }
+    return oauth2Client;
+  }
+}
+
+
 @Injectable()
 export class DesktopGoogleAuthService implements IGoogleAuthService {
   // private readonly logger = new Logger(DesktopGoogleAuthService.name);

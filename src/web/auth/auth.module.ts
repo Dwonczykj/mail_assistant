@@ -16,27 +16,29 @@ import { GmailService } from '../../EmailService/GmailService';
 import { EmailServiceManager } from '../../EmailService/EmailServiceManager';
 // import { GmailInitService } from '../initialization/gmail-init.service';
 import { CategoriserFactory } from '../../Categoriser/CategoriserFactory';
-import { AuthEnvironment, GoogleAuthFactoryService } from '../../lib/auth/services/google-auth-factory.service';
-import { WebGoogleAuthService } from '../../lib/auth/services/web-google-auth.service';
-import { DesktopGoogleAuthService } from '../../lib/auth/services/desktop-google-auth.service';
+// import { AuthEnvironment, GoogleAuthFactoryService } from '../../lib/auth/services/google-auth-factory.service';
+import { AppModule } from '../app.module';
+import { IGoogleAuthService2 } from '../../lib/auth/interfaces/google-auth.interface';
+import { WebGoogleAuthService2 } from '../../lib/auth/services/desktop-google-auth.service';
 import { GoogleStrategy } from './strategies/google.strategy';
 import { PassportModule } from '@nestjs/passport';
 import { JwtModule } from '@nestjs/jwt';
 import { config } from '../../Config/config';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '../../data/entity/User';
 import { AuthUser } from '../../data/entity/AuthUser';
 import { UserCredentialsService } from '../../lib/auth/services/user-credentials.service';
-import { DataSource } from 'typeorm';
 import { ServiceUserService } from '../../lib/auth/services/service-user.service';
 import { InitialiseGoogleAuthenticatedDependenciesService } from '../initialization/InitialiseGoogleAuthenticatedDependenciesService.service';
+import { AuthEnvironment } from '../../lib/auth/services/google-auth-factory.service';
+
 @Module({})
 export class AuthModule {
     static forRoot(environment: AuthEnvironment): DynamicModule {
         return {
             module: AuthModule,
             imports: [
-                TypeOrmModule.forFeature([User, AuthUser], DatabaseInitializerService.getDataSource()),
+                AppModule.forRoot(environment), // This should give us all the imports from the app module without them needing to be re-provided here.
+                // TypeOrmModule.forFeature([User, AuthUser], DatabaseInitializerService.getDataSource()),
                 PassportModule.register({ defaultStrategy: 'google' }),
                 JwtModule.register({
                     secret: config.jwt.secret,
@@ -47,18 +49,22 @@ export class AuthModule {
             providers: [
                 AuthService,
                 GoogleStrategy,
-                DatabaseInitializerService,
-                GoogleAuthFactoryService,
-                WebGoogleAuthService,
-                DesktopGoogleAuthService,
+                // DatabaseInitializerService,
+                WebGoogleAuthService2,
+                {
+                    provide: 'IGoogleAuthService',
+                    useExisting: WebGoogleAuthService2
+                },
+                // DesktopGoogleAuthService,
                 {
                     provide: 'APP_ENVIRONMENT',
                     useValue: environment
                 },
-                {
-                    provide: 'GoogleAuthFactoryService',
-                    useClass: GoogleAuthFactoryService
-                },
+                // GoogleAuthFactoryService,
+                // {
+                //     provide: 'GoogleAuthFactoryService',
+                //     useClass: GoogleAuthFactoryService
+                // },
                 EmailServiceManager,
                 {
                     provide: 'EmailServiceManager',

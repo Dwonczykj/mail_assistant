@@ -1,4 +1,3 @@
-import { IReceiveOAuthClient as IReceiveAuthentication } from "../lib/utils/IGoogleAuth";
 import { Email } from "../models/Email";
 import { ILabel } from "../models/Label";
 
@@ -6,7 +5,7 @@ import { ILabel } from "../models/Label";
  * Interface representing an email client.
  * @param T - The type of the email object.
  */
-export interface IEmailClient extends IReceiveAuthentication {
+export interface IEmailClient {
     readonly name: string;
 
 

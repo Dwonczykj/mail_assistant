@@ -3,6 +3,7 @@ import { AppModule } from './app.module';
 import { Logger } from '@nestjs/common';
 import { EmailServiceManager } from '../EmailService/EmailServiceManager';
 import { AuthEnvironment } from '../lib/auth/services/google-auth-factory.service';
+import { config } from '../Config/config';
 
 async function bootstrap(): Promise<void> {
     const logger = new Logger('Bootstrap');
@@ -15,14 +16,14 @@ async function bootstrap(): Promise<void> {
 
     // Enable CORS for development
     app.enableCors({
-        origin: ['http://localhost:5000', 'http://localhost:3000'],
+        origin: [`http://localhost:${config.apiPort}`],
         credentials: true,
     });
 
     // Get the email service manager
-    const emailServiceManager = app.get(EmailServiceManager);
+    const emailServiceManager = app.get(EmailServiceManager); // TODO: Dont do this here, do this on a class that implements OnApplicationShutdown
 
-    const port = process.env.WEB_PORT || 3000;
+    const port = config.apiPort;
     await app.listen(port);
     logger.log(`Web API is running on: http://localhost:${port}`);
 

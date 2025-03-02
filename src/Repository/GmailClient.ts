@@ -10,151 +10,92 @@ import { ILogger } from '../lib/logger/ILogger';
 import { FyxerAction } from '../data/entity/action';
 import { IFyxerActionRepository } from './IFyxerActionRepository';
 import { gmailPubSubConfig } from '../Config/config';
-import { IGoogleAuth, IHaveGoogleClient, IReceiveOAuthClient } from '../lib/utils/IGoogleAuth';
 import { Injectable, Inject } from '@nestjs/common';
-import { AuthEnvironment, GoogleAuthFactoryService } from '../lib/auth/services/google-auth-factory.service';
-import { IGoogleAuthService } from '../lib/auth/interfaces/google-auth.interface';
+// import { AuthEnvironment, GoogleAuthFactoryService } from '../lib/auth/services/google-auth-factory.service';
+import { IGoogleAuthService, IGoogleAuthService2 } from '../lib/auth/interfaces/google-auth.interface';
 import { Message, Subscription, PubSub } from '@google-cloud/pubsub';
-import { EnsureAuthenticated } from '../lib/decorators/ensure-authenticated.decorator';
-
-abstract class ILockable {
-    private labelCreationLock: Promise<void> = Promise.resolve();
-
-    protected async withLock<T>(operation: () => Promise<T>): Promise<T> {
-        const unlock = await this.acquireLock();
-        try {
-            return await operation();
-        } finally {
-            unlock();
-        }
-    }
-
-    /**
-     * Acquires a lock on the label creation process.
-     * This ensures that only one label creation can happen at a time.
-     * It does it by creating a new promise each time we want mutex lock(){<code>} syntax 
-     * so that each promise contains the <code> inside and the promises are chained 
-     * so that only next one can start after the previous one has finished.
-     * @returns A promise that resolves to a function to release the lock.
-     */
-    protected acquireLock(): Promise<() => void> {
-        let unlockNext: () => void;
-        const previousLock = this.labelCreationLock;
-        this.labelCreationLock = new Promise<void>((resolve) => {
-            unlockNext = resolve;
-        });
-
-        return previousLock.then(() => unlockNext);
-    }
-}
+import { ILockable } from '../lib/auth/interfaces/ILockable';
+import { RequestContext } from '../lib/context/request-context';
 
 @Injectable()
-export class GmailClient extends ILockable implements IEmailClient, IHaveGoogleClient<gmail_v1.Gmail> {
+export class GmailClient extends ILockable implements IEmailClient {
 
     public readonly name: string = "gmail";
-    private readonly emailAdaptor: GmailAdaptor;
-
-    private googleAuthService: IGoogleAuthService;
-    // private authClient: OAuth2Client | null = null; // TODO: GET/Store this on the auth service not here.
-    public get authClient(): OAuth2Client | null {
-        return this.googleAuthService.oAuthClient;
-    }
-    // private credentials: Credentials | null = null; // TODO: Store this on the auth service not here.
-    public get credentials() {
-        return this.googleAuthService.oAuthClient.credentials;
-    }
+    private readonly emailAdaptor: GmailAdaptor = new GmailAdaptor();;
 
     private gmailLabels: gmail_v1.Schema$Label[] = [];
     private gmailLabelsExpireAt: Date | null = null;
     private pullPubSubSubscription: Subscription | null = null;
 
-    public get httpGoogleClient(): gmail_v1.Gmail | null {
-        if (!this.authClient) {
-            return null;
-        }
-        return google.gmail({ version: 'v1', auth: this.authClient });
-    }
 
-    public get authenticated(): Promise<boolean> {
-        // TODO: Defer to the auth provider.
-        return Promise.resolve(this.authClient !== null);
-    }
+    // private authClient: OAuth2Client | null = null; // TODO: GET/Store this on the auth service not here.
+    // private credentials: Credentials | null = null; // TODO: Store this on the auth service not here.
+    // public get authClient(): Promise<OAuth2Client | null> {
+    //     return await this.googleAuthService.getAuthenticatedClient({user: this.serviceUser});
+    // }
+    // public get credentials() {
+    //     return this.googleAuthService.oAuthClient.credentials;
+    // }
+    // public get httpGoogleClient(): gmail_v1.Gmail | null {
+    //     if (!this.authClient) {
+    //         return null;
+    //     }
+    //     return google.gmail({ version: 'v1', auth: this.authClient });
+    // }
 
-    public get credentials_access_token(): string | null {
-        return this.credentials?.access_token || null;
-    }
+    // public get authenticated(): Promise<boolean> {
+    //     // TODO: Defer to the auth provider.
+    //     return Promise.resolve(this.authClient !== null);
+    // }
 
-    public get credentials_expiry_date(): number | null {
-        return this.credentials?.expiry_date || null;
-    }
+    // public get credentials_access_token(): string | null {
+    //     return this.credentials?.access_token || null;
+    // }
+
+    // public get credentials_expiry_date(): number | null {
+    //     return this.credentials?.expiry_date || null;
+    // }
+
 
     constructor(
         @Inject('ILogger') private readonly logger: ILogger,
+        @Inject('IGoogleAuthService') private readonly googleAuthService: IGoogleAuthService2,
         @Inject('IFyxerActionRepository') private readonly fyxerActionRepo: IFyxerActionRepository,
-        private readonly googleAuthFactoryService: GoogleAuthFactoryService,
-        @Inject('APP_ENVIRONMENT') private readonly environment: AuthEnvironment,
     ) {
         super();
-        this.emailAdaptor = new GmailAdaptor();
-        // TODO: We need to fix this method to ensure that it always get an auth service rather than complaining that there is no service for this.environment
-        this.googleAuthService = this.googleAuthFactoryService.getAuthService(this.environment);
     }
 
-    /**
-     * Initializes the Gmail client with an OAuth client.
-     * This method should be called once during application startup.
-     * After this, the EnsureAuthenticated decorator will handle token refreshes automatically.
-     */
-    public async authenticate({ oAuthClient }: { oAuthClient: OAuth2Client }): Promise<void> {
-        await this.googleAuthService.authenticate();
-    }
-
-    /**
-     * Refreshes the authentication client by getting new tokens if needed
-     * This is called automatically by the EnsureAuthenticated decorator
-     */
-    public async refreshAuthClient(): Promise<void> {
-        try {
-            // TODO: Fix us needing to call this
-            if (!this.googleAuthService) {
-                this.logger.warn(`Gmail client not authenticated, creating new auth service for environment: ${this.environment}`);
-            }
-            this.googleAuthService ??= this.googleAuthFactoryService.getAuthService(this.environment);
-            if (!this.googleAuthService) {
-                this.logger.error(`Gmail client not authenticated, creating new auth service for environment: ${this.environment}`);
-                throw new Error(`Gmail client not able to be authenticated from the auth service for environment: ${this.environment}`);
-            }
-            const newCreds = await this.googleAuthService.refreshTokenIfNeeded();
-            this.logger.info('Gmail client authentication refreshed successfully');
-        } catch (error) {
-            this.logger.error('Failed to refresh Gmail client authentication', { error });
-            throw error;
+    private async getHttpGoogleClient(): Promise<gmail_v1.Gmail> {
+        const oAuthClient = await this.googleAuthService.getAuthenticatedClient();
+        if (!oAuthClient) {
+            this.logger.error('Gmail client not authenticated');
+            throw new Error('Gmail client not authenticated. Please authenticate first.');
         }
-    }
-
-    /**
-     * Checks if the current token needs to be refreshed
-     * @returns true if token refresh is needed, false otherwise
-     */
-    public async needsTokenRefresh(): Promise<boolean> {
-        return this.googleAuthService.needsTokenRefresh();
+        return google.gmail({ version: 'v1', auth: oAuthClient });
     }
 
     /**
      * Listens for incoming emails using Gmail API's watch functionality.
      * It sets up push notifications on the "INBOX" by using a webhook/topic that is setup in the Google Cloud Pub/Sub console and routes to our WebAPI application.
      */
-    @EnsureAuthenticated()
     public async listenForIncomingEmails(): Promise<void> {
+        const contextData = RequestContext.get();
+        const user = contextData.user; // BUG It is set correctly in service but here is a different instance passed in and therefore user is null.
+
+        // Log user info if available, otherwise note that we're in daemon mode
+        const userInfo = user ? `${user.email} (${user.id})` : 'daemon mode (no user context)';
+        this.logger.info(`Listening for incoming emails on topic: ${config.google.gmailTopic || gmailPubSubConfig.topicName} from user: ${userInfo}`);
+
+        // If we don't have a user in context, try to get the service user
+        if (!user) {
+            this.logger.warn('No user found in RequestContext, email operations may fail');
+            return;
+        }
+
         const topicName: string = config.google.gmailTopic || gmailPubSubConfig.topicName;
         try {
             // Check if we have valid auth
-            if (!this.httpGoogleClient) {
-                this.logger.error('Gmail client not authenticated');
-                throw new Error('Gmail client not authenticated. Please authenticate first.');
-            }
-
-            const res = await this.httpGoogleClient.users.watch({
+            const res = await (await this.getHttpGoogleClient()).users.watch({
                 userId: 'me',
                 requestBody: {
                     labelIds: ['INBOX'],
@@ -171,12 +112,10 @@ export class GmailClient extends ILockable implements IEmailClient, IHaveGoogleC
 
     public async killIncomingEmailListener(): Promise<void> {
         try {
-            if (this.httpGoogleClient) {
-                await this.httpGoogleClient.users.stop({
-                    userId: 'me',
-                });
-                this.logger.info('✅🧹 Incoming email listener killed');
-            }
+            await (await this.getHttpGoogleClient()).users.stop({
+                userId: 'me',
+            });
+            this.logger.info('✅🧹 Incoming email listener killed');
         } catch (error: any) {
             this.logger.error(`❌🧹 Failed to kill incoming email listener with error: ${error}`, { "error": error.toString() });
             throw error;
@@ -197,7 +136,6 @@ export class GmailClient extends ILockable implements IEmailClient, IHaveGoogleC
      * 
      * @returns {Promise<void>} A promise that resolves when the subscription is successfully set up.
     **/
-    @EnsureAuthenticated()
     async pullMessagesFromPubSubLoop(): Promise<void> {
         const pubsub = new PubSub();
         const topicName = config.google.pubSubConfig.topicName;
@@ -312,7 +250,6 @@ export class GmailClient extends ILockable implements IEmailClient, IHaveGoogleC
         }
     }
 
-    @EnsureAuthenticated()
     public async fetchLastEmails({
         count,
         lastNHours = 24
@@ -321,13 +258,9 @@ export class GmailClient extends ILockable implements IEmailClient, IHaveGoogleC
         lastNHours?: number
     }): Promise<Email[]> {
         try {
-            if (!this.httpGoogleClient) {
-                throw new Error('Gmail client not authenticated');
-            }
-
             const query = `after:${lastNHours ? Math.floor(new Date(Date.now() - lastNHours * 60 * 60 * 1000).getTime() / 1000) : ''}`;
             this.logger.info(`Fetching last ${count} emails with query: "q=${query}"`);
-            const listResponse = await this.httpGoogleClient.users.messages.list({
+            const listResponse = await (await this.getHttpGoogleClient()).users.messages.list({
                 userId: 'me',
                 maxResults: count,
                 q: query
@@ -336,7 +269,7 @@ export class GmailClient extends ILockable implements IEmailClient, IHaveGoogleC
             const messagesList = listResponse.data.messages || [];
 
             const messagePromises = messagesList.map(async (msg) => {
-                const msgDetail = await this.httpGoogleClient!.users.messages.get({
+                const msgDetail = await (await this.getHttpGoogleClient()).users.messages.get({
                     userId: 'me',
                     id: msg.id || '',
                 });
@@ -353,7 +286,6 @@ export class GmailClient extends ILockable implements IEmailClient, IHaveGoogleC
         }
     }
 
-    @EnsureAuthenticated()
     private async listGmailLabels({
         forceRefresh = false
     }: {
@@ -363,11 +295,7 @@ export class GmailClient extends ILockable implements IEmailClient, IHaveGoogleC
             return this.gmailLabels;
         }
 
-        if (!this.httpGoogleClient) {
-            throw new Error('Gmail client not authenticated');
-        }
-
-        const labelResponse = await this.httpGoogleClient.users.labels.list({
+        const labelResponse = await (await this.getHttpGoogleClient()).users.labels.list({
             userId: 'me'
         });
         this.gmailLabels = labelResponse.data.labels || [];
@@ -379,7 +307,6 @@ export class GmailClient extends ILockable implements IEmailClient, IHaveGoogleC
         return this.gmailLabelsExpireAt ? this.gmailLabelsExpireAt < new Date() : true;
     }
 
-    @EnsureAuthenticated()
     private async getOrCreateGmailLabel(label: ILabel): Promise<gmail_v1.Schema$Label> {
         return this.withLock(async () => {
             try {
@@ -389,11 +316,7 @@ export class GmailClient extends ILockable implements IEmailClient, IHaveGoogleC
 
                 if (!gmailLabel) {
                     try {
-                        if (!this.httpGoogleClient) {
-                            throw new Error('Gmail client not authenticated');
-                        }
-
-                        const createResponse = await this.httpGoogleClient.users.labels.create({
+                        const createResponse = await (await this.getHttpGoogleClient()).users.labels.create({
                             userId: 'me',
                             requestBody: {
                                 name: label.name,
@@ -441,7 +364,6 @@ export class GmailClient extends ILockable implements IEmailClient, IHaveGoogleC
      * @param gmail_message - A Gmail message object.
      * @returns The updated Gmail message object with the applied categorisation label.
      */
-    @EnsureAuthenticated()
     public async categoriseEmail(
         { email, label }:
             { email: Email, label: ILabel }
@@ -449,15 +371,10 @@ export class GmailClient extends ILockable implements IEmailClient, IHaveGoogleC
         if (!email.messageId) {
             throw new Error("Email does not have an id.");
         }
-
-        if (!this.httpGoogleClient) {
-            throw new Error('Gmail client not authenticated');
-        }
-
         const gmailLabel = await this.getOrCreateGmailLabel(label);
 
         // Use the label ID instead of name
-        await this.httpGoogleClient.users.messages.modify({
+        await (await this.getHttpGoogleClient()).users.messages.modify({
             userId: 'me',
             id: email.messageId,
             requestBody: {
