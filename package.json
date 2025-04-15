@@ -70,7 +70,7 @@
     "@langchain/mistralai": "^0.2.0",
     "@langchain/ollama": "^0.2.0",
     "@langchain/openai": "^0.4.4",
-    "@nestjs/common": "^11.0.1",
+    "@nestjs/common": "^11.0.16",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.1",
     "@nestjs/jwt": "^11.0.0",
